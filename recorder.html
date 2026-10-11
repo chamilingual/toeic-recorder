@@ -212,7 +212,13 @@
   }
   .done-mark svg { width: 36px; height: 36px; }
   .done-title { text-align: center; font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
-  .done-text { text-align: center; font-size: 0.85rem; color: var(--ink-soft); margin-bottom: 20px; }
+  .done-text { text-align: left; font-size: 0.9rem; color: var(--ink); margin: 14px 0 20px; line-height: 1.8; }
+  .done-text p { margin-bottom: 12px; }
+  .done-alert {
+    background: #fbeaea; border: 1.5px solid #f0c4c4; border-radius: 12px;
+    padding: 12px 14px; color: var(--red-dark); font-weight: 700;
+  }
+  .done-note { font-size: 0.82rem; color: var(--red-dark); font-weight: 700; }
 
   /* バナー・通知 */
   .banner {
@@ -421,8 +427,12 @@
       <div class="done-mark">
         <svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5l5 5L20 6.5" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <p class="done-title">提出が完了しました</p>
-      <p class="done-text" id="doneText">控えのメールを送信しました。届いていない場合は迷惑メールフォルダも確認してください。</p>
+      <p class="done-title">録音を送信しました</p>
+      <div class="done-text" id="doneText">
+        <p>送信が正しく行われている場合は、確認のメールが届きます。提出時に入力したメールアカウントを確認してください。</p>
+        <p class="done-alert">メールが届いていない場合は正しく提出されていない可能性があるので、その場で先生に伝えてください。</p>
+        <p class="done-note">※授業後に送信できていなかったことが発覚したとしても対応できませんので、必ず授業中に伝えてください。</p>
+      </div>
       <button class="btn ghost" id="newSubmit">別の録音を提出する</button>
     </section>
 
@@ -450,7 +460,7 @@
  * ========================================================== */
 const CONFIG = {
   // GAS ウェブアプリの URL（/exec で終わるもの）に書き換える
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbwA343Sw_sZOSxN4shNhlXr2jSh7Tgzq-A92e1LmhfnUHbFfXgk8NaEuPmJ1AsRqRoy/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbxUV8lb_wMDcJcAwhZY3sGZ1hdv3Q8biTjCK3w0w2mBzYlinHhu2AKnHMA5BpJjnPddeQ/exec',
 
   // GAS 側の CONFIG.TOKEN と完全に同じ文字列にする
   TOKEN: 'ろくおん',
@@ -914,7 +924,7 @@ async function startUpload() {
     }
 
     // 成功: バックアップを削除して完了画面へ
-    await idbDelete().catch(() => {});
+    await idbDeleteSafe();   // 端末内バックアップを消す（応答がなくても3秒で先へ進む）
     state.sending = false;
     state.blobs = [];
     showPanel(5);
@@ -1044,6 +1054,23 @@ function idbSaveSafe() {
   let p;
   try {
     p = idbSave();
+  } catch (e) {
+    return Promise.resolve();
+  }
+  return Promise.race([
+    p.catch(() => {}),
+    new Promise(resolve => setTimeout(resolve, 3000))
+  ]);
+}
+
+/**
+ * バックアップ削除。失敗しても応答がなくても必ず 3 秒以内に返る。
+ * （削除が終わらないせいで、送信は成功したのに完了画面に進めない、という状態を防ぐ）
+ */
+function idbDeleteSafe() {
+  let p;
+  try {
+    p = idbDelete();
   } catch (e) {
     return Promise.resolve();
   }
