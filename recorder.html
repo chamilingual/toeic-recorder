@@ -80,6 +80,11 @@
   .field input:focus, .field select:focus, button:focus-visible {
     outline: 3px solid #9ec3ef; outline-offset: 1px; border-color: var(--blue);
   }
+  /* 初期値（例: …）の文字色：メール・学籍番号・名前だけ薄いグレーにする */
+  #email::placeholder, #studentId::placeholder, #name::placeholder {
+    color: #c3cbd4; opacity: 1;
+  }
+  
   .field .err { display: none; font-size: 0.75rem; color: var(--red); margin-top: 4px; }
   .field.invalid input, .field.invalid select { border-color: var(--red); }
   .field.invalid .err { display: block; }
@@ -305,23 +310,23 @@
 
     <!-- ステップ1: 入力 -->
     <section class="panel show" id="panel1">
-      <h2>提出者の情報</h2>
+    <h2>提出者の情報</h2>
       <p class="lead">すべての項目を入力してください。</p>
       <div class="field" id="fEmail">
-        <label for="email">メールアドレス</label>
+        <label for="email">学校のメールアドレス</label>
         <input type="email" id="email" inputmode="email" autocomplete="email"
                autocapitalize="off" placeholder="例: s1234567@example.ac.jp">
         <p class="err">メールアドレスの形式が正しくありません。</p>
-      </div>
-      <div class="field" id="fName">
-        <label for="name">名前</label>
-        <input type="text" id="name" autocomplete="name" placeholder="例: 山田 太郎">
-        <p class="err">名前を入力してください。</p>
       </div>
       <div class="field" id="fStudentId">
         <label for="studentId">学籍番号</label>
         <input type="text" id="studentId" autocapitalize="characters" placeholder="例: 24E1234">
         <p class="err">学籍番号を入力してください。</p>
+      </div>
+      <div class="field" id="fName">
+        <label for="name">名前</label>
+        <input type="text" id="name" autocomplete="name" placeholder="例: 神田 太郎">
+        <p class="err">名前を入力してください。</p>
       </div>
       <div class="field" id="fQuestion">
         <label for="question">問題の種類</label>
