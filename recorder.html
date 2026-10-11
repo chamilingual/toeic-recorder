@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TOEIC Speaking 録音提出フォーム</title>
+<style>
+  :root {
+    --bg: #eef2f7;
+    --card: #ffffff;
+    --ink: #1b2733;
+    --ink-soft: #5a6b7d;
+    --line: #d7dfe8;
+    --blue: #1a5fb4;
+    --blue-dark: #134a8e;
+    --red: #d63b3b;
+    --red-dark: #b32c2c;
+    --green: #1f8a4c;
+    --amber: #b47607;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+                 "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 16px 16px 48px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 460px; margin: 0 auto; }
+
+  header { text-align: center; padding: 8px 0 16px; }
+  header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.02em; }
+  header p { font-size: 0.8rem; color: var(--ink-soft); }
+
+  /* ステップ表示 */
+  .steps {
+    display: flex; justify-content: center; gap: 4px;
+    list-style: none; margin-bottom: 16px; font-size: 0.72rem; color: var(--ink-soft);
+  }
+  .steps li {
+    display: flex; align-items: center; gap: 4px; padding: 4px 8px;
+    border-radius: 99px; background: transparent;
+  }
+  .steps li .dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--line); color: var(--ink-soft);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.68rem; font-weight: 700;
+  }
+  .steps li.active { background: #dce8f7; color: var(--blue-dark); font-weight: 700; }
+  .steps li.active .dot { background: var(--blue); color: #fff; }
+  .steps li.done .dot { background: var(--green); color: #fff; }
+
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    padding: 24px 20px; box-shadow: 0 1px 3px rgba(27,39,51,0.08);
+  }
+  .panel { display: none; }
+  .panel.show { display: block; }
+
+  h2 { font-size: 1rem; margin-bottom: 4px; }
+  .lead { font-size: 0.85rem; color: var(--ink-soft); margin-bottom: 18px; }
+
+  /* フォーム */
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 0.82rem; font-weight: 700; margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%; font-size: 1rem; padding: 12px 14px;
+    border: 1.5px solid var(--line); border-radius: 10px;
+    background: #fff; color: var(--ink); appearance: none;
+  }
+  .field select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6b7d' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+  }
+  .field input:focus, .field select:focus, button:focus-visible {
+    outline: 3px solid #9ec3ef; outline-offset: 1px; border-color: var(--blue);
+  }
+  .field .err { display: none; font-size: 0.75rem; color: var(--red); margin-top: 4px; }
+  .field.invalid input, .field.invalid select { border-color: var(--red); }
+  .field.invalid .err { display: block; }
+
+  /* ボタン */
+  .btn {
+    display: block; width: 100%; padding: 15px; font-size: 1rem; font-weight: 700;
+    border: none; border-radius: 12px; cursor: pointer;
+    background: var(--blue); color: #fff; -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active { background: var(--blue-dark); }
+  .btn:disabled { background: var(--line); color: var(--ink-soft); cursor: default; }
+  .btn.ghost {
+    background: transparent; color: var(--blue); border: 1.5px solid var(--blue);
+    margin-top: 10px;
+  }
+  .btn.ghost:active { background: #eaf1fa; }
+  .btn.subtle {
+    background: transparent; color: var(--ink-soft); border: 1.5px solid var(--line);
+    margin-top: 10px; font-weight: 400; font-size: 0.9rem;
+  }
+
+  /* 録音ボタン（このページの主役） */
+  .rec-stage { text-align: center; padding: 8px 0 4px; }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 2.6rem; font-weight: 700; letter-spacing: 0.04em;
+    margin-bottom: 4px; color: var(--ink);
+  }
+  .timer.warn { color: var(--amber); }
+  .timer-note { font-size: 0.78rem; color: var(--ink-soft); margin-bottom: 20px; }
+  .rec-btn {
+    width: 104px; height: 104px; border-radius: 50%;
+    border: none; cursor: pointer; position: relative;
+    background: var(--red); margin: 0 auto 12px; display: block;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.2s;
+  }
+  .rec-btn:active { background: var(--red-dark); }
+  .rec-btn .icon {
+    position: absolute; inset: 0; margin: auto;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #fff; transition: border-radius 0.2s, width 0.2s, height 0.2s;
+  }
+  .rec-btn.recording .icon { border-radius: 6px; width: 30px; height: 30px; }
+  .rec-btn.recording { animation: pulse 1.6s ease-out infinite; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(214,59,59,0.45); }
+    100% { box-shadow: 0 0 0 26px rgba(214,59,59,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rec-btn.recording { animation: none; box-shadow: 0 0 0 8px rgba(214,59,59,0.25); }
+  }
+  .rec-label { font-size: 0.95rem; font-weight: 700; margin-bottom: 16px; }
+  .rec-label.recording { color: var(--red); }
+
+  /* 複数設問の録音 */
+  .part-indicator {
+    display: none; text-align: center; font-size: 0.88rem; font-weight: 700;
+    color: var(--blue-dark); background: #dce8f7; border-radius: 99px;
+    padding: 7px 16px; margin: 0 auto 6px; width: fit-content;
+  }
+  .part-indicator.show { display: block; }
+  .preview-item { margin-bottom: 16px; }
+  .preview-head {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+  }
+  .preview-head .part-name { font-size: 0.85rem; font-weight: 700; }
+  .preview-head .redo {
+    padding: 6px 12px; font-size: 0.78rem; font-weight: 700; border-radius: 8px;
+    border: 1.5px solid var(--blue); background: transparent; color: var(--blue); cursor: pointer;
+  }
+  .preview-head .redo:active { background: #eaf1fa; }
+  .preview-item audio { margin-bottom: 0; }
+
+  /* 確認画面 */
+  .summary {
+    background: #f5f8fc; border-radius: 12px; padding: 14px 16px;
+    font-size: 0.85rem; margin-bottom: 16px;
+  }
+  .summary div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  .summary dt { color: var(--ink-soft); flex-shrink: 0; }
+  .summary dd { font-weight: 700; text-align: right; word-break: break-all; }
+  audio { width: 100%; margin-bottom: 16px; }
+
+  /* 代替提出パネル */
+  .alt-box {
+    display: none; margin-top: 22px; padding: 18px 16px;
+    background: #fdf9ef; border: 1.5px solid #e6d5ac; border-radius: 14px;
+  }
+  .alt-box.show { display: block; }
+  .alt-box h3 { font-size: 0.95rem; color: #7a5104; margin-bottom: 8px; }
+  .alt-lead { font-size: 0.83rem; color: var(--ink); margin-bottom: 14px; }
+  .alt-box .alt-main { background: var(--amber); }
+  .alt-box .alt-main:active { background: #8f5e05; }
+  .addr-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: #fff; border: 1.5px solid #e6d5ac; border-radius: 10px;
+    padding: 10px 12px; margin-top: 12px;
+  }
+  .addr-label { display: block; font-size: 0.7rem; color: var(--ink-soft); }
+  .addr { font-size: 0.9rem; font-weight: 700; word-break: break-all; }
+  .copy-btn {
+    flex-shrink: 0; padding: 8px 14px; font-size: 0.8rem; font-weight: 700;
+    border-radius: 8px; border: 1.5px solid var(--amber); background: transparent;
+    color: #7a5104; cursor: pointer;
+  }
+  .copy-btn:active, .copy-btn.copied { background: var(--amber); color: #fff; }
+  .alt-note { font-size: 0.78rem; color: var(--ink-soft); margin-top: 10px; }
+
+  /* 送信中 */
+  .progress-wrap { margin: 20px 0; }
+  .progress-bar {
+    height: 12px; background: var(--line); border-radius: 99px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; width: 0%; background: var(--blue); border-radius: 99px;
+    transition: width 0.3s;
+  }
+  .progress-text { text-align: center; font-size: 0.82rem; color: var(--ink-soft); margin-top: 8px; }
+
+  /* 完了画面 */
+  .done-mark {
+    width: 72px; height: 72px; border-radius: 50%; background: var(--green);
+    margin: 8px auto 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .done-mark svg { width: 36px; height: 36px; }
+  .done-title { text-align: center; font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+  .done-text { text-align: center; font-size: 0.85rem; color: var(--ink-soft); margin-bottom: 20px; }
+
+  /* バナー・通知 */
+  .banner {
+    border-radius: 12px; padding: 14px 16px; font-size: 0.85rem; margin-bottom: 16px;
+    display: none;
+  }
+  .banner.show { display: block; }
+  .banner.error { background: #fbeaea; color: #8c1f1f; border: 1px solid #f0c4c4; }
+  .banner.info  { background: #fdf3e0; color: #7a5104; border: 1px solid #ecd9ae; }
+  .banner strong { display: block; margin-bottom: 4px; }
+  .banner .banner-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .banner button {
+    padding: 8px 14px; font-size: 0.82rem; font-weight: 700; border-radius: 8px;
+    border: none; cursor: pointer;
+  }
+  .banner .primary { background: var(--blue); color: #fff; }
+  .banner .secondary { background: transparent; border: 1.5px solid currentColor; color: inherit; }
+
+  /* 試験監視バー */
+  .monitor-bar {
+    display: none; align-items: center; justify-content: center; gap: 8px;
+    background: #eef2f7; border: 1.5px solid var(--line); border-radius: 12px;
+    padding: 11px 14px; margin-bottom: 14px; font-size: 0.82rem; color: var(--ink-soft);
+  }
+  .monitor-bar.show { display: flex; }
+  .monitor-bar.alert { background: #fbeaea; border-color: #e6a5a5; color: var(--red-dark); }
+  .monitor-bar svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .monitor-bar .count { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* 不正警告モーダル */
+  .cheat-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000; padding: 24px;
+    background: rgba(120,20,20,0.78);
+    align-items: center; justify-content: center; animation: fadeIn 0.2s ease-out;
+  }
+  .cheat-overlay.show { display: flex; }
+  .cheat-box {
+    background: #fff; border-radius: 18px; max-width: 400px; width: 100%;
+    padding: 28px 24px; text-align: center; border-top: 8px solid var(--red);
+  }
+  .cheat-icon {
+    width: 64px; height: 64px; border-radius: 50%; background: var(--red);
+    margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .cheat-icon svg { width: 36px; height: 36px; }
+  .cheat-box h3 { font-size: 1.15rem; color: var(--red-dark); margin-bottom: 10px; line-height: 1.4; }
+  .cheat-box p { font-size: 0.9rem; margin-bottom: 8px; }
+  .cheat-box .cheat-count { font-size: 0.85rem; color: var(--ink-soft); margin-bottom: 22px; }
+  .cheat-box .cheat-count b { color: var(--red-dark); font-size: 1.15rem; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .cheat-overlay { animation: none; } }
+
+  footer { text-align: center; font-size: 0.72rem; color: var(--ink-soft); margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>TOEIC Speaking 録音提出フォーム</h1>
+  </header>
+
+  <ol class="steps" id="steps">
+    <li data-step="1" class="active"><span class="dot">1</span>入力</li>
+    <li data-step="2"><span class="dot">2</span>録音</li>
+    <li data-step="3"><span class="dot">3</span>確認</li>
+    <li data-step="4"><span class="dot">4</span>送信</li>
+  </ol>
+
+  <!-- 前回の未送信録音の復元バナー -->
+  <div class="banner info" id="restoreBanner">
+    <strong>前回の録音が残っています</strong>
+    まだ送信されていない録音が見つかりました。この録音を送信しますか?
+    <div class="banner-actions">
+      <button class="primary" id="restoreYes">この録音を確認して送信する</button>
+      <button class="secondary" id="restoreNo">破棄して新しく始める</button>
+    </div>
+  </div>
+
+  <!-- エラーバナー -->
+  <div class="banner error" id="errorBanner">
+    <strong id="errorTitle">エラー</strong>
+    <span id="errorMsg"></span>
+    <div class="banner-actions" id="errorActions"></div>
+  </div>
+
+  <!-- 試験監視バー（録音開始〜提出完了の間だけ表示される） -->
+  <div class="monitor-bar" id="monitorBar" aria-live="polite">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+    <span>試験監視中 · 画面を離れた回数: <span class="count" id="awayCountLabel">0</span> 回</span>
+  </div>
+
+  <div class="card">
+
+    <!-- ステップ1: 入力 -->
+    <section class="panel show" id="panel1">
+      <h2>提出者の情報</h2>
+      <p class="lead">すべての項目を入力してください。</p>
+      <div class="field" id="fEmail">
+        <label for="email">メールアドレス</label>
+        <input type="email" id="email" inputmode="email" autocomplete="email"
+               autocapitalize="off" placeholder="例: s1234567@example.ac.jp">
+        <p class="err">メールアドレスの形式が正しくありません。</p>
+      </div>
+      <div class="field" id="fName">
+        <label for="name">名前</label>
+        <input type="text" id="name" autocomplete="name" placeholder="例: 山田 太郎">
+        <p class="err">名前を入力してください。</p>
+      </div>
+      <div class="field" id="fStudentId">
+        <label for="studentId">学籍番号</label>
+        <input type="text" id="studentId" autocapitalize="characters" placeholder="例: 24E1234">
+        <p class="err">学籍番号を入力してください。</p>
+      </div>
+      <div class="field" id="fQuestion">
+        <label for="question">問題の種類</label>
+        <select id="question">
+          <option value="">選択してください</option>
+        </select>
+        <p class="err">問題の種類を選択してください。</p>
+      </div>
+      <div class="field" id="fNote" style="display:none">
+        <label for="questionNote">内容（任意）</label>
+        <input type="text" id="questionNote" placeholder="例: 授業内課題の再提出">
+      </div>
+      <button class="btn" id="toRecord">録音に進む</button>
+    </section>
+
+    <!-- ステップ2: 録音 -->
+    <section class="panel" id="panel2">
+      <h2>録音</h2>
+      <p class="lead" id="recLead">赤いボタンを押すと録音が始まります。もう一度押すと止まります。</p>
+      <p class="part-indicator" id="partIndicator"></p>
+      <div class="rec-stage">
+        <div class="timer" id="timer">0:00</div>
+        <p class="timer-note" id="timerNote"></p>
+        <button class="rec-btn" id="recBtn" aria-label="録音を開始"><span class="icon"></span></button>
+        <p class="rec-label" id="recLabel">タップして録音を始める</p>
+      </div>
+      <!-- MediaRecorder 非対応ブラウザ用フォールバック -->
+      <div id="fallbackArea" style="display:none">
+        <p class="lead">このブラウザはページ内録音に対応していません。
+        代わりに、録音アプリで録音したファイルを選択してください。</p>
+        <div class="field">
+          <input type="file" id="fallbackFile" accept="audio/*">
+        </div>
+      </div>
+      <button class="btn subtle" id="backTo1">← 入力に戻る</button>
+    </section>
+
+    <!-- ステップ3: 確認 -->
+    <section class="panel" id="panel3">
+      <h2>確認して提出</h2>
+      <p class="lead">録音を聴いて確認してから提出してください。</p>
+      <div id="previewList"></div>
+      <dl class="summary" id="summary"></dl>
+      <button class="btn" id="submitBtn">この録音を提出する</button>
+
+      <!-- 送信がどうしても失敗する場合の代替提出（失敗時のみ表示） -->
+      <div class="alt-box" id="altBox">
+        <h3>それでも送信できないとき</h3>
+        <p class="alt-lead" id="altLead"></p>
+        <button class="btn alt-main" id="altMainBtn"></button>
+        <div class="addr-row">
+          <div>
+            <span class="addr-label">提出先アドレス</span>
+            <span class="addr" id="altAddr"></span>
+          </div>
+          <button class="copy-btn" id="copyAddrBtn">コピー</button>
+        </div>
+        <p class="alt-note" id="altNote"></p>
+        <button class="btn subtle" id="altMailBtn" style="display:none">メールアプリを開く（宛先入力済み）</button>
+      </div>
+    </section>
+
+    <!-- ステップ4: 送信中 -->
+    <section class="panel" id="panel4">
+      <h2>送信中…</h2>
+      <p class="lead">送信が終わるまで、この画面を閉じないでください。</p>
+      <div class="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <p class="progress-text" id="progressText">準備中…</p>
+      </div>
+    </section>
+
+    <!-- 完了 -->
+    <section class="panel" id="panel5">
+      <div class="done-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5l5 5L20 6.5" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <p class="done-title">提出が完了しました</p>
+      <p class="done-text" id="doneText">控えのメールを送信しました。届いていない場合は迷惑メールフォルダも確認してください。</p>
+      <button class="btn ghost" id="newSubmit">別の録音を提出する</button>
+    </section>
+
+  </div>
+
+  <footer>うまくいかない場合は手を挙げて担当教員に伝えてください。</footer>
+</div>
+
+<!-- 不正警告モーダル -->
+<div class="cheat-overlay" id="cheatOverlay" role="alertdialog" aria-modal="true" aria-labelledby="cheatTitle">
+  <div class="cheat-box">
+    <div class="cheat-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="17" r="1.7" fill="#fff"/></svg></div>
+    <h3 id="cheatTitle">試験中に別の画面に移ることは不正です</h3>
+    <p>録音中・提出中は、他のアプリやタブに移動しないでください。</p>
+    <p class="cheat-count">画面を離れた回数: <b id="cheatCount">1</b> 回</p>
+    <button class="btn" id="cheatOk">確認しました</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ============================================================
+ * 設定（教員が編集する場所はここだけです）
+ * ========================================================== */
+const CONFIG = {
+  // GAS ウェブアプリの URL（/exec で終わるもの）に書き換える
+  GAS_URL: 'ここにGASウェブアプリのURLを貼る',
+
+  // GAS 側の CONFIG.TOKEN と完全に同じ文字列にする
+  TOKEN: 'ここに長いランダムな合言葉を設定',
+
+  // 問題の種類の選択肢(自由に増減・変更してよい)
+  //   label:      画面に表示される名前
+  //   parts:      録音するファイルの数(応答問題のように複数設問がある場合は 2 以上)
+  //   partLabels: 各録音の名前(parts が 2 以上のときに指定。ファイル名・メールにも使われる)
+  QUESTION_OPTIONS: [
+    { label: 'Q1-2 音読', parts: 1 },
+    { label: 'Q3 写真描写', parts: 1 },
+    { label: 'Q5-7 応答問題', parts: 3, partLabels: ['Q5', 'Q6', 'Q7'] },
+    { label: 'Q8-10 表問題', parts: 3, partLabels: ['Q8', 'Q9', 'Q10'] },
+    { label: 'Q11 意見', parts: 1 },
+    { label: 'その他', parts: 1, note: true }   // note: true → 内容を書く欄が出る
+  ],
+
+  // 送信がどうしても失敗する学生のための、代替提出先メールアドレス
+  FALLBACK_EMAIL: 'kaida-m@kifl.ac.jp',
+
+  // 録音の上限秒数（超えると自動停止）
+  MAX_SECONDS: 120,
+
+  // 1チャンクあたりの base64 文字数（回線が弱い環境向けに小さめ）
+  CHUNK_SIZE: 200000
+};
+
+/* ============================================================
+ * 以下は編集不要
+ * ========================================================== */
+
+const $ = (id) => document.getElementById(id);
+const state = {
+  blobs: [],           // 録音データ（設問ごとに1つ。1ファイルの問題なら要素1つ）
+  mimeType: '',
+  meta: null,          // {email, name, studentId, question}
+  qOption: null,       // 選択された QUESTION_OPTIONS の要素
+  currentPart: 0,      // いま録音している設問の番号（0始まり）
+  reRecordIndex: null, // 録り直し中の設問番号（通常は null）
+  uploadId: null,
+  ackedByPart: [],     // 設問ごとの送信成功済みチャンク番号（Set の配列）
+  sending: false,
+  restored: false
+};
+
+/* 選択中の問題の設問数と設問名 */
+function partsOf() { return (state.qOption && state.qOption.parts) || 1; }
+function partLabel(i) {
+  if (partsOf() === 1) return '';
+  const ls = state.qOption.partLabels;
+  return (ls && ls[i]) || ('設問' + (i + 1));
+}
+
+/* ---------- 初期化 ---------- */
+window.addEventListener('DOMContentLoaded', () => {
+  // 問題の種類の選択肢を生成
+  const sel = $('question');
+  CONFIG.QUESTION_OPTIONS.forEach((q, i) => {
+    const o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = q.label + (q.parts > 1 ? `（録音${q.parts}回）` : '');
+    sel.appendChild(o);
+  });
+  $('timerNote').textContent = `最長 ${Math.floor(CONFIG.MAX_SECONDS / 60)}分${CONFIG.MAX_SECONDS % 60 ? CONFIG.MAX_SECONDS % 60 + '秒' : ''} まで録音できます`;
+
+  // 「その他」など note:true の選択時だけ内容欄を出す
+  sel.addEventListener('change', () => {
+    const q = CONFIG.QUESTION_OPTIONS[Number(sel.value)];
+    $('fNote').style.display = (q && q.note) ? 'block' : 'none';
+  });
+
+  // 代替提出パネルの初期化
+  setupAltSubmit();
+
+  // MediaRecorder 対応チェック
+  if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    $('recBtn').style.display = 'none';
+    $('recLabel').style.display = 'none';
+    $('timer').style.display = 'none';
+    $('timerNote').style.display = 'none';
+    $('fallbackArea').style.display = 'block';
+  }
+
+  // 未送信データの復元チェック
+  idbGet().then(saved => {
+    if (saved && Array.isArray(saved.blobs) && saved.blobs.length > 0) {
+      state.savedData = saved;
+      $('restoreBanner').classList.add('show');
+    }
+  }).catch(() => {});
+});
+
+/* ---------- 画面遷移 ---------- */
+function showPanel(n) {
+  for (let i = 1; i <= 5; i++) $('panel' + i).classList.toggle('show', i === n);
+  const stepNo = Math.min(n, 4);
+  document.querySelectorAll('#steps li').forEach(li => {
+    const s = Number(li.dataset.step);
+    li.classList.toggle('active', s === stepNo);
+    li.classList.toggle('done', s < stepNo || n === 5);
+  });
+  window.scrollTo(0, 0);
+}
+
+/* ---------- ステップ1: 入力 ---------- */
+$('toRecord').addEventListener('click', () => {
+  if (!validateForm()) return;
+  state.qOption = CONFIG.QUESTION_OPTIONS[Number($('question').value)];
+  state.meta = collectMeta();
+  state.blobs = [];
+  state.currentPart = 0;
+  state.reRecordIndex = null;
+  hideError();
+  $('altBox').classList.remove('show');
+  updateRecUI();
+  showPanel(2);
+});
+
+function collectMeta() {
+  const q = CONFIG.QUESTION_OPTIONS[Number($('question').value)];
+  let label = q.label;
+  if (q.note) {
+    const note = $('questionNote').value.trim();
+    if (note) label += '（' + note + '）';
+  }
+  return {
+    email: $('email').value.trim(),
+    name: $('name').value.trim(),
+    studentId: $('studentId').value.trim(),
+    question: label
+  };
+}
+
+function validateForm() {
+  let ok = true;
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('email').value.trim());
+  $('fEmail').classList.toggle('invalid', !emailOk); ok = ok && emailOk;
+  const nameOk = $('name').value.trim().length > 0;
+  $('fName').classList.toggle('invalid', !nameOk); ok = ok && nameOk;
+  const idOk = $('studentId').value.trim().length > 0;
+  $('fStudentId').classList.toggle('invalid', !idOk); ok = ok && idOk;
+  const qOk = $('question').value !== '';
+  $('fQuestion').classList.toggle('invalid', !qOk); ok = ok && qOk;
+  return ok;
+}
+
+$('backTo1').addEventListener('click', () => showPanel(1));
+
+/* 録音画面の表示を現在の設問に合わせて更新 */
+function updateRecUI() {
+  const p = partsOf();
+  const idx = state.reRecordIndex !== null ? state.reRecordIndex : state.currentPart;
+  const ind = $('partIndicator');
+  if (p > 1) {
+    ind.textContent = (state.reRecordIndex !== null ? '録り直し: ' : `録音 ${idx + 1} / ${p}: `) + partLabel(idx);
+    ind.classList.add('show');
+    $('recLabel').textContent = `タップして ${partLabel(idx)} の録音を始める`;
+  } else {
+    ind.classList.remove('show');
+    $('recLabel').textContent = 'タップして録音を始める';
+  }
+  $('timer').textContent = '0:00';
+  $('timer').classList.remove('warn');
+  // フォールバック（ファイル選択）は設問数に合わせて複数選択に
+  $('fallbackFile').toggleAttribute('multiple', p > 1);
+  const fbLead = document.querySelector('#fallbackArea .lead');
+  if (fbLead) fbLead.textContent = p > 1
+    ? `このブラウザはページ内録音に対応していません。代わりに、録音アプリで録音したファイルを ${p} 個（${state.qOption.partLabels ? state.qOption.partLabels.join('・') : ''} の順）まとめて選択してください。`
+    : 'このブラウザはページ内録音に対応していません。代わりに、録音アプリで録音したファイルを選択してください。';
+}
+
+/* ---------- ステップ2: 録音 ---------- */
+let mediaRecorder = null;
+let recChunks = [];
+let recStream = null;
+let recTimerId = null;
+let recStartTime = 0;
+
+function pickMimeType() {
+  const candidates = [
+    'audio/mp4',                 // iPhone / iPad の Safari
+    'audio/webm;codecs=opus',    // Chrome / Edge / Android
+    'audio/webm',
+    'audio/ogg;codecs=opus'      // Firefox
+  ];
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return '';
+}
+
+$('recBtn').addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopRecording();
+    return;
+  }
+  await startRecording();
+});
+
+async function startRecording() {
+  hideError();
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+      showError('マイクが使えません',
+        'マイクの使用を許可してください。iPhone の場合: 一度ページを再読み込みして「許可」を選ぶか、設定アプリ → Safari → マイク を「確認」または「許可」にしてください。');
+    } else if (err.name === 'NotFoundError') {
+      showError('マイクが見つかりません', 'この端末にマイクがないか、他のアプリが使用中です。');
+    } else {
+      showError('マイクの起動に失敗しました', err.message);
+    }
+    return;
+  }
+
+  const mimeType = pickMimeType();
+  state.mimeType = mimeType || 'audio/webm';
+  recChunks = [];
+  try {
+    mediaRecorder = new MediaRecorder(recStream,
+      mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 });
+  } catch (e) {
+    mediaRecorder = new MediaRecorder(recStream);
+    state.mimeType = mediaRecorder.mimeType || 'audio/webm';
+  }
+
+  mediaRecorder.addEventListener('dataavailable', (ev) => {
+    if (ev.data && ev.data.size > 0) recChunks.push(ev.data);
+  });
+  mediaRecorder.addEventListener('stop', onRecordingStopped);
+
+  mediaRecorder.start(1000); // 1秒ごとにデータを確定（途中クラッシュ対策）
+  recStartTime = Date.now();
+  updateTimer();
+  recTimerId = setInterval(updateTimer, 250);
+
+  $('recBtn').classList.add('recording');
+  $('recBtn').setAttribute('aria-label', '録音を停止');
+  $('recLabel').textContent = '録音中… もう一度タップで停止';
+  $('recLabel').classList.add('recording');
+  $('backTo1').disabled = true;
+  startExamMonitoring();
+}
+
+function updateTimer() {
+  const sec = Math.floor((Date.now() - recStartTime) / 1000);
+  $('timer').textContent = Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
+  $('timer').classList.toggle('warn', CONFIG.MAX_SECONDS - sec <= 20);
+  if (sec >= CONFIG.MAX_SECONDS) stopRecording();
+}
+
+function stopRecording() {
+  if (recTimerId) { clearInterval(recTimerId); recTimerId = null; }
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+}
+
+function onRecordingStopped() {
+  if (recStream) {
+    recStream.getTracks().forEach(t => t.stop()); // マイクを解放
+    recStream = null;
+  }
+  $('recBtn').classList.remove('recording');
+  $('recLabel').classList.remove('recording');
+  $('backTo1').disabled = false;
+
+  const blob = new Blob(recChunks, { type: state.mimeType });
+  recChunks = [];
+  if (blob.size === 0) {
+    updateRecUI();
+    showError('録音に失敗しました', '音声データが空です。もう一度録音してください。');
+    return;
+  }
+
+  if (state.reRecordIndex !== null) {
+    // 録り直し: 該当設問だけ差し替えて確認画面へ戻る
+    state.blobs[state.reRecordIndex] = blob;
+    state.reRecordIndex = null;
+    idbSaveSafe().then(() => goConfirm());
+    return;
+  }
+
+  state.blobs[state.currentPart] = blob;
+  if (state.currentPart + 1 < partsOf()) {
+    // 次の設問の録音へ（同じ画面のまま進む）
+    state.currentPart++;
+    idbSaveSafe();
+    updateRecUI();
+    return;
+  }
+  // 全設問の録音が完了 → 端末内バックアップに保存してから確認画面へ
+  prepareUpload();
+  idbSaveSafe().then(() => goConfirm());
+}
+
+/* フォールバック: ファイル選択 */
+$('fallbackFile').addEventListener('change', (ev) => {
+  const files = Array.from(ev.target.files || []);
+  const p = partsOf();
+  if (files.length === 0) return;
+  if (files.length !== p) {
+    showError('ファイルの数が合いません', `この問題は ${p} 個の音声ファイルを選択してください（現在 ${files.length} 個）。`);
+    return;
+  }
+  for (const f of files) {
+    if (f.size > 15 * 1024 * 1024) {
+      showError('ファイルが大きすぎます', '15MB 以下の音声ファイルを選択してください。');
+      return;
+    }
+  }
+  state.blobs = files;
+  state.mimeType = files[0].type || 'audio/mp4';
+  prepareUpload();
+  idbSaveSafe().then(() => goConfirm());
+});
+
+function prepareUpload() {
+  state.uploadId = (crypto.randomUUID && crypto.randomUUID()) ||
+    'u' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+  state.ackedByPart = state.blobs.map(() => new Set());
+}
+
+/* ---------- ステップ3: 確認 ---------- */
+function goConfirm() {
+  const list = $('previewList');
+  list.innerHTML = '';
+  state.blobs.forEach((blob, i) => {
+    const item = document.createElement('div');
+    item.className = 'preview-item';
+    const head = document.createElement('div');
+    head.className = 'preview-head';
+    const name = document.createElement('span');
+    name.className = 'part-name';
+    name.textContent = partsOf() > 1 ? partLabel(i) : '録音';
+    const redo = document.createElement('button');
+    redo.className = 'redo';
+    redo.type = 'button';
+    redo.textContent = '録り直す';
+    redo.addEventListener('click', () => {
+      state.reRecordIndex = i;
+      updateRecUI();
+      showPanel(2);
+    });
+    head.append(name, redo);
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.preload = 'metadata';
+    audio.src = URL.createObjectURL(blob);
+    item.append(head, audio);
+    list.appendChild(item);
+  });
+
+  const m = state.meta;
+  $('summary').innerHTML = '';
+  [['名前', m.name], ['学籍番号', m.studentId], ['問題の種類', m.question], ['メール', m.email]]
+    .forEach(([k, v]) => {
+      const row = document.createElement('div');
+      const dt = document.createElement('dt'); dt.textContent = k;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      row.append(dt, dd);
+      $('summary').appendChild(row);
+    });
+  $('submitBtn').textContent = state.blobs.length > 1
+    ? `録音を提出する（${state.blobs.length}ファイル）` : 'この録音を提出する';
+  showPanel(3);
+}
+
+/* ---------- ステップ4: 送信 ---------- */
+$('submitBtn').addEventListener('click', () => startUpload());
+
+async function startUpload() {
+  if (state.sending) return;
+  if (!navigator.onLine) {
+    showError('オフラインです', '電波の良い場所に移動するか Wi-Fi に接続してから、もう一度「この録音を提出する」を押してください。録音は消えません。');
+    return;
+  }
+  state.sending = true;
+  hideError();
+  showPanel(4);
+
+  try {
+    const nParts = state.blobs.length;
+    const base64s = [];
+    for (const b of state.blobs) base64s.push(await blobToBase64(b));
+    const chunkCounts = base64s.map(b => Math.ceil(b.length / CONFIG.CHUNK_SIZE));
+    const totalAll = chunkCounts.reduce((a, b) => a + b, 0);
+    const ackedTotal = () => state.ackedByPart.reduce((a, s) => a + s.size, 0);
+    const label = (p) => nParts > 1 ? `ファイル ${p + 1}/${nParts} を送信中…` : '送信中…';
+
+    const fileResults = []; // 保存済みファイル {name, url}（控えメール用）
+
+    for (let p = 0; p < nParts; p++) {
+      const pid = state.uploadId + '-p' + (p + 1); // 設問ごとに独立したアップロードID
+      const base64 = base64s[p];
+      const total = chunkCounts[p];
+      const acked = state.ackedByPart[p];
+
+      // 未送信のチャンクだけ順に送る（再送時は続きから）
+      for (let i = 0; i < total; i++) {
+        if (acked.has(i)) continue;
+        setProgress(ackedTotal(), totalAll, `${label(p)} (${ackedTotal() + 1}/${totalAll})`);
+        await postWithRetry({
+          action: 'chunk',
+          uploadId: pid,
+          index: i,
+          total: total,
+          data: base64.slice(i * CONFIG.CHUNK_SIZE, (i + 1) * CONFIG.CHUNK_SIZE)
+        });
+        acked.add(i);
+        setProgress(ackedTotal(), totalAll, `${label(p)} (${ackedTotal()}/${totalAll})`);
+      }
+
+      // 仕上げ（結合・保存・記録。控えメールは最後のファイルの時にまとめて1通）
+      setProgress(ackedTotal(), totalAll, nParts > 1 ? `ファイル ${p + 1}/${nParts} を保存しています…` : '保存しています…');
+      let result = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        result = await postWithRetry({
+          action: 'finalize',
+          uploadId: pid,
+          total: total,
+          mimeType: state.mimeType,
+          email: state.meta.email,
+          name: state.meta.name,
+          studentId: state.meta.studentId,
+          question: state.meta.question,
+          partLabel: nParts > 1 ? partLabel(p) : '',
+          sendMail: p === nParts - 1,
+          allFiles: p === nParts - 1 ? fileResults : [],
+          awayCount: awayCount
+        }, true);
+        if (result.ok) break;
+        if (result.error === 'missing_chunks' && Array.isArray(result.missing)) {
+          // 欠けたチャンクだけ再送してもう一度 finalize
+          for (const idx of result.missing) {
+            acked.delete(idx);
+            await postWithRetry({
+              action: 'chunk', uploadId: pid, index: idx, total: total,
+              data: base64.slice(idx * CONFIG.CHUNK_SIZE, (idx + 1) * CONFIG.CHUNK_SIZE)
+            });
+            acked.add(idx);
+          }
+        } else {
+          throw new Error(result.error || '保存に失敗しました。');
+        }
+      }
+      if (!result || !result.ok) throw new Error('保存に失敗しました。もう一度お試しください。');
+      fileResults.push({ name: result.fileName, url: result.fileUrl });
+    }
+
+    // 成功: バックアップを削除して完了画面へ
+    await idbDelete().catch(() => {});
+    stopExamMonitoring();
+    state.sending = false;
+    state.blobs = [];
+    showPanel(5);
+
+  } catch (err) {
+    state.sending = false;
+    showPanel(3);
+    showAltSubmit();
+    showError('送信に失敗しました',
+      '録音データは消えていません。まず電波の良い場所で、もう一度「この録音を提出する」を押してください（送信済みの部分は省略され、続きから再開します）。それでも送信できない場合は、画面の下にある代替の提出方法をお使いください。');
+  }
+}
+
+function setProgress(done, total, text) {
+  $('progressFill').style.width = Math.round((done / total) * 100) + '%';
+  $('progressText').textContent = text;
+}
+
+/* GAS への POST（1リクエストにつき最大3回リトライ） */
+async function postWithRetry(payload, returnErrorResponse) {
+  payload.token = CONFIG.TOKEN;
+  const delays = [0, 2000, 5000];
+  let lastErr = null;
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i]) await sleep(delays[i]);
+    try {
+      const res = await fetch(CONFIG.GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // プリフライト回避
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (data.ok) return data;
+      // サーバー側の論理エラー: finalize の missing_chunks は呼び出し元で処理
+      if (returnErrorResponse) return data;
+      throw new Error(data.error || 'サーバーエラー');
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('通信に失敗しました。');
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('データの読み込みに失敗しました。'));
+    r.readAsDataURL(blob);
+  });
+}
+
+/* 端末にダウンロード（最終手段のフォールバック） */
+async function downloadBlob() {
+  const ext = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg' }[state.mimeType.split(';')[0]] || 'audio';
+  for (let i = 0; i < state.blobs.length; i++) {
+    const part = state.blobs.length > 1 ? '_' + partLabel(i) : '';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(state.blobs[i]);
+    a.download = `${state.meta.studentId}_${state.meta.name}${part}_録音.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    if (i < state.blobs.length - 1) await sleep(600); // 連続保存の取りこぼし防止
+  }
+}
+
+/* ---------- 完了後 ---------- */
+$('newSubmit').addEventListener('click', () => {
+  state.blobs = [];
+  state.currentPart = 0;
+  state.reRecordIndex = null;
+  state.uploadId = null;
+  state.ackedByPart = [];
+  awayCount = 0;
+  pendingWarning = false;
+  refreshAwayCounter();
+  $('timer').textContent = '0:00';
+  $('timer').classList.remove('warn');
+  $('previewList').innerHTML = '';
+  $('altBox').classList.remove('show');
+  $('questionNote').value = '';
+  $('fNote').style.display = 'none';
+  showPanel(1);
+});
+
+/* ---------- IndexedDB（未送信録音のバックアップ） ---------- */
+const IDB_NAME = 'toeicRecorder';
+const IDB_STORE = 'pending';
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE, { keyPath: 'id' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSave() {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put({
+      id: 'current',
+      blobs: state.blobs.slice(),
+      mimeType: state.mimeType,
+      meta: state.meta,
+      qOption: state.qOption,
+      currentPart: state.currentPart,
+      uploadId: state.uploadId,
+      createdAt: Date.now()
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * バックアップ保存を試みるが、失敗しても応答が無くても必ず 3 秒以内に返る。
+ * （一部のブラウザ・プライベートモードでは IndexedDB が応答しないことがあり、
+ *   そのまま待つと録音後に画面が進まなくなるため）
+ */
+function idbSaveSafe() {
+  let p;
+  try {
+    p = idbSave();
+  } catch (e) {
+    return Promise.resolve();
+  }
+  return Promise.race([
+    p.catch(() => {}),
+    new Promise(resolve => setTimeout(resolve, 3000))
+  ]);
+}
+
+async function idbGet() {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get('current');
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbDelete() {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete('current');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* 復元バナーの操作 */
+$('restoreYes').addEventListener('click', () => {
+  const s = state.savedData;
+  state.blobs = s.blobs.slice();
+  state.mimeType = s.mimeType;
+  state.meta = s.meta;
+  state.qOption = s.qOption ||
+    CONFIG.QUESTION_OPTIONS.find(q => s.meta.question.indexOf(q.label) === 0) ||
+    { label: s.meta.question, parts: s.blobs.length };
+  state.currentPart = typeof s.currentPart === 'number' ? s.currentPart : 0;
+  state.reRecordIndex = null;
+  state.uploadId = s.uploadId;   // 同じ ID を使う → 送信済みチャンクはサーバー側に残っている
+  state.ackedByPart = state.blobs.map(() => new Set()); // 欠番は finalize が教えてくれるので空でよい
+  $('email').value = s.meta.email;
+  $('name').value = s.meta.name;
+  $('studentId').value = s.meta.studentId;
+  const qi = CONFIG.QUESTION_OPTIONS.findIndex(q => s.meta.question.indexOf(q.label) === 0);
+  if (qi >= 0) {
+    $('question').value = String(qi);
+    const q = CONFIG.QUESTION_OPTIONS[qi];
+    if (q.note) {
+      $('fNote').style.display = 'block';
+      const m = s.meta.question.match(/^.+?（(.+)）$/);
+      if (m) $('questionNote').value = m[1];
+    }
+  }
+  $('restoreBanner').classList.remove('show');
+
+  const parts = partsOf();
+  const complete = state.blobs.length >= parts && state.blobs.slice(0, parts).every(b => b);
+  if (complete) {
+    if (!state.uploadId) prepareUpload();
+    goConfirm();
+  } else {
+    // 録音の途中だった → 次の未録音の設問から再開
+    state.currentPart = state.blobs.length;
+    updateRecUI();
+    showPanel(2);
+  }
+  startExamMonitoring();
+});
+
+$('restoreNo').addEventListener('click', () => {
+  idbDelete().catch(() => {});
+  $('restoreBanner').classList.remove('show');
+});
+
+/* ---------- エラー表示 ---------- */
+function showError(title, msg, actions) {
+  $('errorTitle').textContent = title;
+  $('errorMsg').textContent = msg;
+  const box = $('errorActions');
+  box.innerHTML = '';
+  (actions || []).forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'secondary';
+    b.textContent = a.label;
+    b.addEventListener('click', a.handler);
+    box.appendChild(b);
+  });
+  $('errorBanner').classList.add('show');
+  window.scrollTo(0, 0);
+}
+function hideError() { $('errorBanner').classList.remove('show'); }
+
+/* ---------- 代替提出（送信がどうしても失敗する場合） ---------- */
+
+/** この端末が「ファイルを添付して共有」に対応しているか */
+function canShareFiles() {
+  try {
+    if (!navigator.canShare || !navigator.share || state.blobs.length === 0) return false;
+    return navigator.canShare({ files: buildShareFiles() });
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 共有・ダウンロード用の File オブジェクトを作る */
+function buildShareFiles() {
+  const ext = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg' }[state.mimeType.split(';')[0]] || 'm4a';
+  const type = state.mimeType.split(';')[0] || 'audio/mp4';
+  return state.blobs.map((b, i) => {
+    const part = state.blobs.length > 1 ? '_' + partLabel(i) : '';
+    const fname = `${sanitizeForFile(state.meta.studentId)}_${sanitizeForFile(state.meta.name)}${part}_録音.${ext}`;
+    return new File([b], fname, { type: type });
+  });
+}
+
+function sanitizeForFile(s) {
+  return String(s || '').replace(/[\\\/:*?"<>|\s]/g, '') || 'unknown';
+}
+
+/** 保存先の案内文（端末に応じて表示を変える） */
+function savedLocationText() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) {
+    return '保存した録音は「ファイル」アプリの「ダウンロード」フォルダに入っています。';
+  }
+  if (/Android/.test(ua)) {
+    return '保存した録音は「Files（ファイル）」アプリの「Download」フォルダに入っています。';
+  }
+  return '保存した録音はブラウザのダウンロードフォルダに入っています。';
+}
+
+/** メール本文のひな形 */
+function mailBodyText() {
+  const m = state.meta || {};
+  return [
+    'システムから送信できなかったため、録音をメールで提出します。',
+    '',
+    '名前: ' + (m.name || ''),
+    '学籍番号: ' + (m.studentId || ''),
+    '問題の種類: ' + (m.question || ''),
+    '',
+    '（この下に録音ファイルを添付してください）'
+  ].join('\n');
+}
+
+function setupAltSubmit() {
+  $('altAddr').textContent = CONFIG.FALLBACK_EMAIL;
+
+  // 提出先アドレスのコピー
+  $('copyAddrBtn').addEventListener('click', async () => {
+    const btn = $('copyAddrBtn');
+    try {
+      await navigator.clipboard.writeText(CONFIG.FALLBACK_EMAIL);
+    } catch (e) {
+      // クリップボード API が使えない端末向けの代替手段
+      const ta = document.createElement('textarea');
+      ta.value = CONFIG.FALLBACK_EMAIL;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e2) {}
+      ta.remove();
+    }
+    btn.textContent = 'コピーしました';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
+  });
+
+  // メールアプリを開く（宛先・件名・本文は入力済み。添付は手動）
+  $('altMailBtn').addEventListener('click', () => {
+    const subject = `録音提出 ${state.meta.studentId} ${state.meta.name}`;
+    location.href = 'mailto:' + CONFIG.FALLBACK_EMAIL +
+      '?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(mailBodyText());
+  });
+
+  // メインボタン: 共有に対応していれば共有、していなければ端末に保存
+  $('altMainBtn').addEventListener('click', async () => {
+    if (canShareFiles()) {
+      try {
+        await navigator.share({
+          files: buildShareFiles(),
+          title: '録音の提出',
+          text: mailBodyText()
+        });
+      } catch (e) {
+        // ユーザーが共有をキャンセルした場合など。何もしない
+      }
+    } else {
+      await downloadBlob();
+      $('altNote').textContent = savedLocationText() +
+        'この録音をメールに添付し、上の提出先アドレスに送ってください。件名や本文は下のボタンで用意できます。';
+      $('altMailBtn').style.display = 'block';
+    }
+  });
+}
+
+/** 代替提出パネルを表示（送信失敗時に呼ばれる） */
+function showAltSubmit() {
+  const n = state.blobs.length;
+  const shareable = canShareFiles();
+  $('altLead').textContent = shareable
+    ? `録音データはこの端末に残っています。下のボタンから、録音${n > 1 ? n + '件' : ''}を添付したメールで提出できます。`
+    : `録音データはこの端末に残っています。下のボタンで録音${n > 1 ? n + '件' : ''}を端末に保存し、メールに添付して提出してください。`;
+  $('altMainBtn').textContent = shareable
+    ? (n > 1 ? `録音${n}件をメールで送る` : '録音をメールで送る')
+    : (n > 1 ? `録音${n}件を端末に保存する` : '録音を端末に保存する');
+  $('altNote').textContent = shareable
+    ? 'メールアプリを選ぶと、録音が添付された状態で開きます。宛先は自動で入らないので、上の提出先アドレスをコピーして貼り付けてください。'
+    : savedLocationText();
+  $('altMailBtn').style.display = 'none';
+  $('altBox').classList.add('show');
+}
+
+/* ---------- 試験監視（画面離脱の検知） ---------- */
+let examActive = false;   // 録音開始〜提出完了の間だけ true
+let awayCount = 0;        // 画面を離れた回数
+let pendingWarning = false;
+
+function startExamMonitoring() {
+  if (examActive) return;  // 既に監視中ならカウントを維持
+  examActive = true;
+  $('monitorBar').classList.add('show');
+  refreshAwayCounter();
+}
+
+function stopExamMonitoring() {
+  examActive = false;
+  $('monitorBar').classList.remove('show');
+}
+
+function refreshAwayCounter() {
+  $('awayCountLabel').textContent = awayCount;
+  $('monitorBar').classList.toggle('alert', awayCount > 0);
+}
+
+// 別アプリ・別タブへの切り替え、ホーム画面への移動、画面ロックなどで発火する。
+// 離れている間は画面が見えないため、戻ってきたタイミングで警告を出す。
+document.addEventListener('visibilitychange', () => {
+  if (!examActive) return;
+  if (document.hidden) {
+    awayCount++;
+    pendingWarning = true;
+    refreshAwayCounter();
+  } else if (pendingWarning) {
+    pendingWarning = false;
+    $('cheatCount').textContent = awayCount;
+    $('cheatOverlay').classList.add('show');
+  }
+});
+
+$('cheatOk').addEventListener('click', () => {
+  $('cheatOverlay').classList.remove('show');
+});
+
+/* ---------- 離脱ガード ---------- */
+window.addEventListener('beforeunload', (e) => {
+  if ((mediaRecorder && mediaRecorder.state === 'recording') || state.sending) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+</script>
+</body>
+</html>
