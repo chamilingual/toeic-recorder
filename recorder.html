@@ -82,9 +82,8 @@
   }
   /* 初期値（例: …）の文字色：メール・学籍番号・名前だけ薄いグレーにする */
   #email::placeholder, #studentId::placeholder, #name::placeholder {
-    color: #c3cbd4; opacity: 1;
+    color: #c3cbd4; opacity: 1;   /* opacity: 1 は Firefox が勝手に薄くするのを防ぐため */
   }
-  
   .field .err { display: none; font-size: 0.75rem; color: var(--red); margin-top: 4px; }
   .field.invalid input, .field.invalid select { border-color: var(--red); }
   .field.invalid .err { display: block; }
@@ -234,14 +233,22 @@
 
   /* 試験監視バー */
   .monitor-bar {
-    display: none; align-items: center; justify-content: center; gap: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
     background: #eef2f7; border: 1.5px solid var(--line); border-radius: 12px;
     padding: 11px 14px; margin-bottom: 14px; font-size: 0.82rem; color: var(--ink-soft);
   }
-  .monitor-bar.show { display: flex; }
   .monitor-bar.alert { background: #fbeaea; border-color: #e6a5a5; color: var(--red-dark); }
   .monitor-bar svg { width: 16px; height: 16px; flex-shrink: 0; }
   .monitor-bar .count { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* ページ内録音に対応していない端末向けの案内 */
+  .unsupported {
+    display: none; padding: 18px 16px; border-radius: 14px;
+    background: #fbeaea; border: 1.5px solid #f0c4c4; color: #8c1f1f;
+  }
+  .unsupported.show { display: block; }
+  .unsupported p { font-size: 0.92rem; font-weight: 700; line-height: 1.7; }
+  .unsupported .addr-row { border-color: #f0c4c4; color: var(--ink); }
 
   /* 不正警告モーダル */
   .cheat-overlay {
@@ -300,17 +307,11 @@
     <div class="banner-actions" id="errorActions"></div>
   </div>
 
-  <!-- 試験監視バー（録音開始〜提出完了の間だけ表示される） -->
-  <div class="monitor-bar" id="monitorBar" aria-live="polite">
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
-    <span>試験監視中 · 画面を離れた回数: <span class="count" id="awayCountLabel">0</span> 回</span>
-  </div>
-
   <div class="card">
 
     <!-- ステップ1: 入力 -->
     <section class="panel show" id="panel1">
-    <h2>提出者の情報</h2>
+      <h2>提出者の情報</h2>
       <p class="lead">すべての項目を入力してください。</p>
       <div class="field" id="fEmail">
         <label for="email">学校のメールアドレス</label>
@@ -345,22 +346,38 @@
     <!-- ステップ2: 録音 -->
     <section class="panel" id="panel2">
       <h2>録音</h2>
-      <p class="lead" id="recLead">赤いボタンを押すと録音が始まります。もう一度押すと止まります。</p>
-      <p class="part-indicator" id="partIndicator"></p>
-      <div class="rec-stage">
-        <div class="timer" id="timer">0:00</div>
-        <p class="timer-note" id="timerNote"></p>
-        <button class="rec-btn" id="recBtn" aria-label="録音を開始"><span class="icon"></span></button>
-        <p class="rec-label" id="recLabel">タップして録音を始める</p>
-      </div>
-      <!-- MediaRecorder 非対応ブラウザ用フォールバック -->
-      <div id="fallbackArea" style="display:none">
-        <p class="lead">このブラウザはページ内録音に対応していません。
-        代わりに、録音アプリで録音したファイルを選択してください。</p>
-        <div class="field">
-          <input type="file" id="fallbackFile" accept="audio/*">
+
+      <!-- 録音機能が使える端末 -->
+      <div id="recUI">
+        <p class="lead" id="recLead">赤いボタンを押すと録音が始まります。もう一度押すと止まります。</p>
+
+        <!-- 画面離脱の監視バー（この録音画面を開いてから録音を終えるまで数える） -->
+        <div class="monitor-bar" id="monitorBar" aria-live="polite">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+          <span>試験監視中 · 画面を離れた回数: <span class="count" id="awayCountLabel">0</span> 回</span>
+        </div>
+
+        <p class="part-indicator" id="partIndicator"></p>
+        <div class="rec-stage">
+          <div class="timer" id="timer">0:00</div>
+          <p class="timer-note" id="timerNote"></p>
+          <button class="rec-btn" id="recBtn" aria-label="録音を開始"><span class="icon"></span></button>
+          <p class="rec-label" id="recLabel">タップして録音を始める</p>
         </div>
       </div>
+
+      <!-- ページ内録音に対応していない端末向けの案内 -->
+      <div class="unsupported" id="unsupportedArea" role="alert">
+        <p>この端末はこの録音アプリの機能に対応していません。別の録音アプリを使って録音し、メールで先生に提出してください。</p>
+        <div class="addr-row">
+          <div>
+            <span class="addr-label">提出先アドレス</span>
+            <span class="addr" id="unsAddr"></span>
+          </div>
+          <button class="copy-btn" id="copyAddrBtn2">コピー</button>
+        </div>
+      </div>
+
       <button class="btn subtle" id="backTo1">← 入力に戻る</button>
     </section>
 
@@ -419,7 +436,7 @@
   <div class="cheat-box">
     <div class="cheat-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="17" r="1.7" fill="#fff"/></svg></div>
     <h3 id="cheatTitle">試験中に別の画面に移ることは不正です</h3>
-    <p>録音中・提出中は、他のアプリやタブに移動しないでください。</p>
+    <p>録音ページを開いてから録音が終わるまでの間は、他のアプリやタブに移動しないでください。</p>
     <p class="cheat-count">画面を離れた回数: <b id="cheatCount">1</b> 回</p>
     <button class="btn" id="cheatOk">確認しました</button>
   </div>
@@ -508,13 +525,12 @@ window.addEventListener('DOMContentLoaded', () => {
   // 代替提出パネルの初期化
   setupAltSubmit();
 
-  // MediaRecorder 対応チェック
-  if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    $('recBtn').style.display = 'none';
-    $('recLabel').style.display = 'none';
-    $('timer').style.display = 'none';
-    $('timerNote').style.display = 'none';
-    $('fallbackArea').style.display = 'block';
+  // ページ内録音（MediaRecorder）に対応しているか確認する。
+  // 非対応なら録音画面の代わりに案内文を出し、離脱回数も数えない。
+  recordingSupported = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if (!recordingSupported) {
+    $('recUI').style.display = 'none';
+    $('unsupportedArea').classList.add('show');
   }
 
   // 未送信データの復元チェック
@@ -535,6 +551,8 @@ function showPanel(n) {
     li.classList.toggle('active', s === stepNo);
     li.classList.toggle('done', s < stepNo || n === 5);
   });
+  // 画面離脱の監視は「録音画面を開いている間」だけ。確認・送信画面に移ったら止める。
+  if (n === 2) startExamMonitoring(); else stopExamMonitoring();
   window.scrollTo(0, 0);
 }
 
@@ -597,12 +615,6 @@ function updateRecUI() {
   }
   $('timer').textContent = '0:00';
   $('timer').classList.remove('warn');
-  // フォールバック（ファイル選択）は設問数に合わせて複数選択に
-  $('fallbackFile').toggleAttribute('multiple', p > 1);
-  const fbLead = document.querySelector('#fallbackArea .lead');
-  if (fbLead) fbLead.textContent = p > 1
-    ? `このブラウザはページ内録音に対応していません。代わりに、録音アプリで録音したファイルを ${p} 個（${state.qOption.partLabels ? state.qOption.partLabels.join('・') : ''} の順）まとめて選択してください。`
-    : 'このブラウザはページ内録音に対応していません。代わりに、録音アプリで録音したファイルを選択してください。';
 }
 
 /* ---------- ステップ2: 録音 ---------- */
@@ -675,7 +687,6 @@ async function startRecording() {
   $('recLabel').textContent = '録音中… もう一度タップで停止';
   $('recLabel').classList.add('recording');
   $('backTo1').disabled = true;
-  startExamMonitoring();
 }
 
 function updateTimer() {
@@ -698,6 +709,14 @@ function onRecordingStopped() {
   $('recBtn').classList.remove('recording');
   $('recLabel').classList.remove('recording');
   $('backTo1').disabled = false;
+
+  // 画面を離れた影響で録音が止まった場合、離脱の通知より先にここへ来ることがあるため、
+  // 離れている最中に止まったなら、ここで1回数える
+  if (examActive && document.hidden && !pendingWarning) {
+    awayCount++;
+    pendingWarning = true;
+    refreshAwayCounter();
+  }
 
   const blob = new Blob(recChunks, { type: state.mimeType });
   recChunks = [];
@@ -727,27 +746,6 @@ function onRecordingStopped() {
   prepareUpload();
   idbSaveSafe().then(() => goConfirm());
 }
-
-/* フォールバック: ファイル選択 */
-$('fallbackFile').addEventListener('change', (ev) => {
-  const files = Array.from(ev.target.files || []);
-  const p = partsOf();
-  if (files.length === 0) return;
-  if (files.length !== p) {
-    showError('ファイルの数が合いません', `この問題は ${p} 個の音声ファイルを選択してください（現在 ${files.length} 個）。`);
-    return;
-  }
-  for (const f of files) {
-    if (f.size > 15 * 1024 * 1024) {
-      showError('ファイルが大きすぎます', '15MB 以下の音声ファイルを選択してください。');
-      return;
-    }
-  }
-  state.blobs = files;
-  state.mimeType = files[0].type || 'audio/mp4';
-  prepareUpload();
-  idbSaveSafe().then(() => goConfirm());
-});
 
 function prepareUpload() {
   state.uploadId = (crypto.randomUUID && crypto.randomUUID()) ||
@@ -884,7 +882,6 @@ async function startUpload() {
 
     // 成功: バックアップを削除して完了画面へ
     await idbDelete().catch(() => {});
-    stopExamMonitoring();
     state.sending = false;
     state.blobs = [];
     showPanel(5);
@@ -996,6 +993,7 @@ async function idbSave() {
       meta: state.meta,
       qOption: state.qOption,
       currentPart: state.currentPart,
+      awayCount: awayCount,
       uploadId: state.uploadId,
       createdAt: Date.now()
     });
@@ -1051,6 +1049,9 @@ $('restoreYes').addEventListener('click', () => {
     CONFIG.QUESTION_OPTIONS.find(q => s.meta.question.indexOf(q.label) === 0) ||
     { label: s.meta.question, parts: s.blobs.length };
   state.currentPart = typeof s.currentPart === 'number' ? s.currentPart : 0;
+  awayCount = typeof s.awayCount === 'number' ? s.awayCount : 0;   // 離脱回数も引き継ぐ
+  pendingWarning = false;
+  refreshAwayCounter();
   state.reRecordIndex = null;
   state.uploadId = s.uploadId;   // 同じ ID を使う → 送信済みチャンクはサーバー側に残っている
   state.ackedByPart = state.blobs.map(() => new Set()); // 欠番は finalize が教えてくれるので空でよい
@@ -1080,7 +1081,6 @@ $('restoreYes').addEventListener('click', () => {
     updateRecUI();
     showPanel(2);
   }
-  startExamMonitoring();
 });
 
 $('restoreNo').addEventListener('click', () => {
@@ -1161,10 +1161,11 @@ function mailBodyText() {
 
 function setupAltSubmit() {
   $('altAddr').textContent = CONFIG.FALLBACK_EMAIL;
+  $('unsAddr').textContent = CONFIG.FALLBACK_EMAIL;
 
   // 提出先アドレスのコピー
-  $('copyAddrBtn').addEventListener('click', async () => {
-    const btn = $('copyAddrBtn');
+  const copyHandler = async (ev) => {
+    const btn = ev.currentTarget;
     try {
       await navigator.clipboard.writeText(CONFIG.FALLBACK_EMAIL);
     } catch (e) {
@@ -1180,7 +1181,9 @@ function setupAltSubmit() {
     btn.textContent = 'コピーしました';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
-  });
+  };
+  $('copyAddrBtn').addEventListener('click', copyHandler);
+  $('copyAddrBtn2').addEventListener('click', copyHandler);
 
   // メールアプリを開く（宛先・件名・本文は入力済み。添付は手動）
   $('altMailBtn').addEventListener('click', () => {
@@ -1229,20 +1232,19 @@ function showAltSubmit() {
 }
 
 /* ---------- 試験監視（画面離脱の検知） ---------- */
-let examActive = false;   // 録音開始〜提出完了の間だけ true
-let awayCount = 0;        // 画面を離れた回数
+let recordingSupported = true;   // ページ内録音が使える端末か（初期化時に判定）
+let examActive = false;          // 録音画面を開いている間だけ true（showPanel が切り替える）
+let awayCount = 0;               // 画面を離れた回数（複数録音の問題では合計）
 let pendingWarning = false;
 
 function startExamMonitoring() {
-  if (examActive) return;  // 既に監視中ならカウントを維持
-  examActive = true;
-  $('monitorBar').classList.add('show');
+  if (!recordingSupported) return;   // 録音できない端末では数えない
+  examActive = true;                 // カウントは引き継ぐ（画面を開き直しても0に戻さない）
   refreshAwayCounter();
 }
 
 function stopExamMonitoring() {
   examActive = false;
-  $('monitorBar').classList.remove('show');
 }
 
 function refreshAwayCounter() {
@@ -1253,12 +1255,12 @@ function refreshAwayCounter() {
 // 別アプリ・別タブへの切り替え、ホーム画面への移動、画面ロックなどで発火する。
 // 離れている間は画面が見えないため、戻ってきたタイミングで警告を出す。
 document.addEventListener('visibilitychange', () => {
-  if (!examActive) return;
   if (document.hidden) {
+    if (!examActive) return;          // 録音画面を開いていなければ数えない
     awayCount++;
     pendingWarning = true;
     refreshAwayCounter();
-  } else if (pendingWarning) {
+  } else if (pendingWarning) {        // 離れている間に画面が切り替わっていても、戻ってきたら警告する
     pendingWarning = false;
     $('cheatCount').textContent = awayCount;
     $('cheatOverlay').classList.add('show');
