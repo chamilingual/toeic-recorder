@@ -192,7 +192,7 @@
     color: #7a5104; cursor: pointer;
   }
   .copy-btn:active, .copy-btn.copied { background: var(--amber); color: #fff; }
-  .alt-note { font-size: 0.78rem; color: var(--ink-soft); margin-top: 10px; }
+  .alt-note { font-size: 0.8rem; color: var(--ink); margin: 12px 0 14px; line-height: 1.7; }
 
   /* 送信中 */
   .progress-wrap { margin: 20px 0; }
@@ -229,6 +229,8 @@
   .banner.error { background: #fbeaea; color: #8c1f1f; border: 1px solid #f0c4c4; }
   .banner.info  { background: #fdf3e0; color: #7a5104; border: 1px solid #ecd9ae; }
   .banner strong { display: block; margin-bottom: 4px; }
+  .banner .err-detail { display: none; margin-top: 8px; font-size: 0.75rem; opacity: 0.9; }
+  .banner .err-detail.show { display: block; }
   .banner .banner-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .banner button {
     padding: 8px 14px; font-size: 0.82rem; font-weight: 700; border-radius: 8px;
@@ -310,6 +312,7 @@
   <div class="banner error" id="errorBanner">
     <strong id="errorTitle">エラー</strong>
     <span id="errorMsg"></span>
+    <span class="err-detail" id="errorDetail"></span>
     <div class="banner-actions" id="errorActions"></div>
   </div>
 
@@ -399,7 +402,6 @@
       <div class="alt-box" id="altBox">
         <h3>それでも送信できないとき</h3>
         <p class="alt-lead" id="altLead"></p>
-        <button class="btn alt-main" id="altMainBtn"></button>
         <div class="addr-row">
           <div>
             <span class="addr-label">提出先アドレス</span>
@@ -408,6 +410,7 @@
           <button class="copy-btn" id="copyAddrBtn">コピー</button>
         </div>
         <p class="alt-note" id="altNote"></p>
+        <button class="btn alt-main" id="altMainBtn"></button>
         <button class="btn subtle" id="altMailBtn" style="display:none">メールアプリを開く（宛先入力済み）</button>
       </div>
     </section>
@@ -754,11 +757,10 @@ function onRecordingStopped() {
   $('backTo1').disabled = false;
 
   // 画面を離れた影響で録音が止まった場合、離脱の通知より先にここへ来ることがあるため、
-  // 離れている最中に止まったなら、ここで1回数える
-  if (examActive && document.hidden && !pendingWarning) {
-    awayCount++;
-    pendingWarning = true;
-    refreshAwayCounter();
+  // 離れている最中に止まったなら、ここで「離れ始めた時刻」を記録しておく
+  // （数えるかどうかは、戻ってきた時に離れていた時間で判定する）
+  if (examActive && document.hidden && hiddenAt === null) {
+    hiddenAt = Date.now();
   }
 
   const blob = new Blob(recChunks, { type: state.mimeType });
@@ -889,7 +891,7 @@ async function startUpload() {
       // 仕上げ（結合・保存・記録。控えメールは最後のファイルの時にまとめて1通）
       setProgress(ackedTotal(), totalAll, nParts > 1 ? `ファイル ${p + 1}/${nParts} を保存しています…` : '保存しています…');
       let result = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 6; attempt++) {
         result = await postWithRetry({
           action: 'finalize',
           uploadId: pid,
@@ -905,6 +907,12 @@ async function startUpload() {
           awayCount: awayCount
         }, true);
         if (result.ok) break;
+        if (result.error === 'busy') {
+          // 授業中などで送信先が混み合っている。少し時間をずらして再試行する
+          setProgress(ackedTotal(), totalAll, '混み合っています。そのままお待ちください…');
+          await sleep(3000 + Math.random() * 3000);
+          continue;
+        }
         if (result.error === 'missing_chunks' && Array.isArray(result.missing)) {
           // 欠けたチャンクだけ再送してもう一度 finalize
           for (const idx of result.missing) {
@@ -916,10 +924,10 @@ async function startUpload() {
             acked.add(idx);
           }
         } else {
-          throw new Error(result.error || '保存に失敗しました。');
+          throw new Error(serverErrorText(result.error) || '保存に失敗しました。');
         }
       }
-      if (!result || !result.ok) throw new Error('保存に失敗しました。もう一度お試しください。');
+      if (!result || !result.ok) throw new Error(serverErrorText(result && result.error) || '保存に失敗しました。もう一度お試しください。');
       fileResults.push({ name: result.fileName, url: result.fileUrl });
     }
 
@@ -934,7 +942,8 @@ async function startUpload() {
     showPanel(3);
     showAltSubmit();
     showError('送信に失敗しました',
-      '録音データは消えていません。まず電波の良い場所で、もう一度「この録音を提出する」を押してください（送信済みの部分は省略され、続きから再開します）。それでも送信できない場合は、画面の下にある代替の提出方法をお使いください。');
+      '録音データは消えていません。まず電波の良い場所で、もう一度「この録音を提出する」を押してください（送信済みの部分は省略され、続きから再開します）。それでも送信できない場合は、画面の下にある代替の提出方法をお使いください。',
+      null, err && err.message);
   }
 }
 
@@ -944,29 +953,62 @@ function setProgress(done, total, text) {
 }
 
 /* GAS への POST（1リクエストにつき最大3回リトライ） */
+const REQUEST_TIMEOUT_MS = 60000;   // 1回の通信で応答を待つ最長時間（回線が弱い環境向けに長め）
+
 async function postWithRetry(payload, returnErrorResponse) {
   payload.token = CONFIG.TOKEN;
   const delays = [0, 2000, 5000];
   let lastErr = null;
   for (let i = 0; i < delays.length; i++) {
     if (delays[i]) await sleep(delays[i]);
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS) : null;
     try {
-      const res = await fetch(CONFIG.GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // プリフライト回避
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
+      let res;
+      try {
+        res = await fetch(CONFIG.GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // プリフライト回避
+          body: JSON.stringify(payload),
+          signal: ctrl ? ctrl.signal : undefined
+        });
+      } catch (netErr) {
+        lastErr = new Error(netErr && netErr.name === 'AbortError'
+          ? '送信先から応答がありませんでした（時間切れ）。'
+          : '送信先に接続できませんでした。GAS_URL が最新のデプロイのURLか、デプロイが停止されていないか、「アクセスできるユーザー」が「全員」かを確認してください。');
+        continue;
+      }
+      if (!res.ok) {
+        lastErr = new Error(res.status === 404
+          ? '送信先が見つかりません（HTTP 404）。GAS_URL が古いか、デプロイが停止されています。'
+          : '送信先がエラーを返しました（HTTP ' + res.status + '）。');
+        continue;
+      }
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        lastErr = new Error('送信先がログイン画面などを返しました。デプロイの「アクセスできるユーザー」を「全員」にしてください。');
+        continue;
+      }
       if (data.ok) return data;
-      // サーバー側の論理エラー: finalize の missing_chunks は呼び出し元で処理
+      // サーバー側の論理エラー: finalize の missing_chunks / busy は呼び出し元で処理
       if (returnErrorResponse) return data;
-      throw new Error(data.error || 'サーバーエラー');
-    } catch (err) {
-      lastErr = err;
+      lastErr = new Error(serverErrorText(data.error));
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
   throw lastErr || new Error('通信に失敗しました。');
+}
+
+/** GAS が返したエラーを、原因が分かる文に直す */
+function serverErrorText(code) {
+  const c = String(code || '');
+  if (c.indexOf('認証エラー') === 0) return '合言葉（TOKEN）が GAS の Code.gs と一致していません。';
+  if (c === 'busy') return '送信先が混み合っています。少し待ってから、もう一度提出してください。';
+  if (c === 'missing_chunks') return '音声データの一部が届きませんでした。';
+  return c || 'サーバーエラー';
 }
 
 function blobToBase64(blob) {
@@ -1001,7 +1043,7 @@ $('newSubmit').addEventListener('click', () => {
   state.uploadId = null;
   state.ackedByPart = [];
   awayCount = 0;
-  pendingWarning = false;
+  hiddenAt = null;
   refreshAwayCounter();
   $('timer').textContent = '0:00';
   $('timer').classList.remove('warn');
@@ -1110,7 +1152,7 @@ $('restoreYes').addEventListener('click', () => {
     { label: s.meta.question, parts: s.blobs.length };
   state.currentPart = typeof s.currentPart === 'number' ? s.currentPart : 0;
   awayCount = typeof s.awayCount === 'number' ? s.awayCount : 0;   // 離脱回数も引き継ぐ
-  pendingWarning = false;
+  hiddenAt = null;
   refreshAwayCounter();
   state.reRecordIndex = null;
   state.uploadId = s.uploadId;   // 同じ ID を使う → 送信済みチャンクはサーバー側に残っている
@@ -1149,9 +1191,11 @@ $('restoreNo').addEventListener('click', () => {
 });
 
 /* ---------- エラー表示 ---------- */
-function showError(title, msg, actions) {
+function showError(title, msg, actions, detail) {
   $('errorTitle').textContent = title;
   $('errorMsg').textContent = msg;
+  $('errorDetail').textContent = detail ? '（先生向けの情報：' + detail + '）' : '';
+  $('errorDetail').classList.toggle('show', !!detail);
   const box = $('errorActions');
   box.innerHTML = '';
   (actions || []).forEach(a => {
@@ -1268,7 +1312,7 @@ function setupAltSubmit() {
     } else {
       await downloadBlob();
       $('altNote').textContent = savedLocationText() +
-        'この録音をメールに添付し、上の提出先アドレスに送ってください。件名や本文は下のボタンで用意できます。';
+        'この録音をメールに添付し、上の提出先アドレスに送ってください。下の「メールアプリを開く」を押すと、宛先・件名・本文が入力された状態で開きます。';
       $('altMailBtn').style.display = 'block';
     }
   });
@@ -1278,15 +1322,14 @@ function setupAltSubmit() {
 function showAltSubmit() {
   const n = state.blobs.length;
   const shareable = canShareFiles();
-  $('altLead').textContent = shareable
-    ? `録音データはこの端末に残っています。下のボタンから、録音${n > 1 ? n + '件' : ''}を添付したメールで提出できます。`
-    : `録音データはこの端末に残っています。下のボタンで録音${n > 1 ? n + '件' : ''}を端末に保存し、メールに添付して提出してください。`;
+  const files = n > 1 ? `録音${n}件` : '録音';
+  $('altLead').textContent = `録音データはこの端末に残っています。次の手順で、${files}をメールで先生に提出してください。`;
   $('altMainBtn').textContent = shareable
-    ? (n > 1 ? `録音${n}件をメールで送る` : '録音をメールで送る')
-    : (n > 1 ? `録音${n}件を端末に保存する` : '録音を端末に保存する');
+    ? `${files}をメールで送る`
+    : `${files}を端末に保存する`;
   $('altNote').textContent = shareable
-    ? 'メールアプリを選ぶと、録音が添付された状態で開きます。宛先は自動で入らないので、上の提出先アドレスをコピーして貼り付けてください。'
-    : savedLocationText();
+    ? `① まず、上の「コピー」を押して提出先アドレスをコピーしてください。② 次に、下の「${files}をメールで送る」を押してメールアプリを選ぶと、${files}が添付された状態で開きます。③ 宛先にコピーしたアドレスを貼り付けて送信してください。`
+    : `① まず、上の「コピー」を押して提出先アドレスをコピーしてください。② 次に、下のボタンで${files}を端末に保存してください。③ 保存した${files}をメールに添付し、コピーしたアドレスに送ってください。`;
   $('altMailBtn').style.display = 'none';
   $('altBox').classList.add('show');
 }
@@ -1295,7 +1338,12 @@ function showAltSubmit() {
 let recordingSupported = true;   // ページ内録音が使える端末か（初期化時に判定）
 let examActive = false;          // 録音画面を開いている間だけ true（showPanel が切り替える）
 let awayCount = 0;               // 画面を離れた回数（複数録音の問題では合計）
-let pendingWarning = false;
+let hiddenAt = null;             // 画面が隠れ始めた時刻（録音画面を開いている間に隠れた場合だけ記録）
+
+// この時間（ミリ秒）以上画面を離れた場合だけ「離脱」として数える。
+// スマホではキーボードの開閉・文字選択メニュー・マイク許可の表示などで画面が一瞬だけ隠れることがあり、
+// それを不正と誤って数えないため。タイマーではなく時刻の差で測る（スマホは裏でタイマーを止めるため）。
+const LEAVE_THRESHOLD_MS = 1200;
 
 function startExamMonitoring() {
   if (!recordingSupported) return;   // 録音できない端末では数えない
@@ -1316,15 +1364,20 @@ function refreshAwayCounter() {
 // 離れている間は画面が見えないため、戻ってきたタイミングで警告を出す。
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (!examActive) return;          // 録音画面を開いていなければ数えない
-    awayCount++;
-    pendingWarning = true;
-    refreshAwayCounter();
-  } else if (pendingWarning) {        // 離れている間に画面が切り替わっていても、戻ってきたら警告する
-    pendingWarning = false;
-    $('cheatCount').textContent = awayCount;
-    $('cheatOverlay').classList.add('show');
+    if (!examActive) return;               // 録音画面を開いていなければ数えない
+    if (hiddenAt === null) hiddenAt = Date.now();
+    return;
   }
+  // 画面に戻ってきた: 離れていた時間で判定する
+  if (hiddenAt === null) return;
+  const awayMs = Date.now() - hiddenAt;
+  hiddenAt = null;
+  if (awayMs < LEAVE_THRESHOLD_MS) return; // 一瞬だけ隠れた場合は数えない
+  awayCount++;
+  refreshAwayCounter();
+  // 離れている間に確認画面へ切り替わっていても、戻ってきたら警告する
+  $('cheatCount').textContent = awayCount;
+  $('cheatOverlay').classList.add('show');
 });
 
 $('cheatOk').addEventListener('click', () => {
