@@ -450,7 +450,7 @@
  * ========================================================== */
 const CONFIG = {
   // GAS ウェブアプリの URL（/exec で終わるもの）に書き換える
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbxUV8lb_wMDcJcAwhZY3sGZ1hdv3Q8biTjCK3w0w2mBzYlinHhu2AKnHMA5BpJjnPddeQ/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbwA343Sw_sZOSxN4shNhlXr2jSh7Tgzq-A92e1LmhfnUHbFfXgk8NaEuPmJ1AsRqRoy/exec',
 
   // GAS 側の CONFIG.TOKEN と完全に同じ文字列にする
   TOKEN: 'ろくおん',
@@ -522,6 +522,9 @@ window.addEventListener('DOMContentLoaded', () => {
     $('fNote').style.display = (q && q.note) ? 'block' : 'none';
   });
 
+  // 前回入力したメールアドレス・学籍番号・名前を自動入力（2回目以降用）
+  applyProfile();
+
   // 代替提出パネルの初期化
   setupAltSubmit();
 
@@ -542,6 +545,35 @@ window.addEventListener('DOMContentLoaded', () => {
   }).catch(() => {});
 });
 
+/* ---------- 前回の入力内容の記憶（メールアドレス・学籍番号・名前だけ） ---------- */
+const PROFILE_KEY = 'toeicRecorderProfile';
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    const p = raw ? JSON.parse(raw) : null;
+    return (p && typeof p === 'object') ? p : null;
+  } catch (e) {
+    return null;   // 記憶が使えない環境（プライベートモードなど）では何もしない
+  }
+}
+
+function saveProfile(m) {
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify({
+      email: m.email, studentId: m.studentId, name: m.name
+    }));
+  } catch (e) { /* 保存できなくても提出には影響しない */ }
+}
+
+function applyProfile() {
+  const p = loadProfile();
+  if (!p) return;
+  if (typeof p.email === 'string') $('email').value = p.email;
+  if (typeof p.studentId === 'string') $('studentId').value = p.studentId;
+  if (typeof p.name === 'string') $('name').value = p.name;
+}
+
 /* ---------- 画面遷移 ---------- */
 function showPanel(n) {
   for (let i = 1; i <= 5; i++) $('panel' + i).classList.toggle('show', i === n);
@@ -561,6 +593,7 @@ $('toRecord').addEventListener('click', () => {
   if (!validateForm()) return;
   state.qOption = CONFIG.QUESTION_OPTIONS[Number($('question').value)];
   state.meta = collectMeta();
+  saveProfile(state.meta);   // 次回の自動入力用に端末へ記憶（問題の種類は記憶しない）
   state.blobs = [];
   state.currentPart = 0;
   state.reRecordIndex = null;
