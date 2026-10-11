@@ -428,21 +428,21 @@
  * ========================================================== */
 const CONFIG = {
   // GAS ウェブアプリの URL（/exec で終わるもの）に書き換える
-  GAS_URL: 'ここにGASウェブアプリのURLを貼る',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbxUV8lb_wMDcJcAwhZY3sGZ1hdv3Q8biTjCK3w0w2mBzYlinHhu2AKnHMA5BpJjnPddeQ/exec',
 
   // GAS 側の CONFIG.TOKEN と完全に同じ文字列にする
-  TOKEN: 'ここに長いランダムな合言葉を設定',
+  TOKEN: 'ろくおん',
 
   // 問題の種類の選択肢(自由に増減・変更してよい)
   //   label:      画面に表示される名前
   //   parts:      録音するファイルの数(応答問題のように複数設問がある場合は 2 以上)
   //   partLabels: 各録音の名前(parts が 2 以上のときに指定。ファイル名・メールにも使われる)
   QUESTION_OPTIONS: [
-    { label: 'Q1-2 音読', parts: 1 },
-    { label: 'Q3 写真描写', parts: 1 },
+    { label: 'Q1-2 音読問題', parts: 1 },
+    { label: 'Q3 写真描写問題', parts: 1 },
     { label: 'Q5-7 応答問題', parts: 3, partLabels: ['Q5', 'Q6', 'Q7'] },
     { label: 'Q8-10 表問題', parts: 3, partLabels: ['Q8', 'Q9', 'Q10'] },
-    { label: 'Q11 意見', parts: 1 },
+    { label: 'Q11 意見問題', parts: 1 },
     { label: 'その他', parts: 1, note: true }   // note: true → 内容を書く欄が出る
   ],
 
