@@ -194,6 +194,30 @@
   .copy-btn:active, .copy-btn.copied { background: var(--amber); color: #fff; }
   .alt-note { font-size: 0.8rem; color: var(--ink); margin: 12px 0 14px; line-height: 1.7; }
 
+  /* 録音をスマホに保存するボタン */
+  .save-list { margin: 12px 0 4px; }
+  .save-list .save-btn {
+    display: block; width: 100%; padding: 13px; margin-bottom: 8px;
+    font-size: 0.95rem; font-weight: 700; border-radius: 12px; cursor: pointer;
+    background: #fff; color: #7a5104; border: 1.5px solid var(--amber);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .save-list .save-btn:active { background: #fdf3e0; }
+  .save-list .save-btn.saved { background: #fdf3e0; }
+  .save-hint { font-size: 0.75rem; color: var(--ink-soft); margin-bottom: 6px; }
+  .saved-note { font-size: 0.8rem; color: var(--ink); margin: 4px 0 10px; line-height: 1.7; }
+  .saved-note:empty { display: none; }
+
+  /* 送信が進まないときの案内（送信中の画面） */
+  .stall-box {
+    display: none; margin-top: 20px; padding: 18px 16px; text-align: left;
+    background: #fdf9ef; border: 1.5px solid #e6d5ac; border-radius: 14px;
+  }
+  .stall-box.show { display: block; }
+  .stall-box h3 { font-size: 0.95rem; color: #7a5104; margin-bottom: 8px; }
+  .stall-box p { font-size: 0.83rem; line-height: 1.7; }
+  .stall-box .stall-foot { font-size: 0.78rem; color: var(--ink-soft); margin-top: 6px; }
+
   /* 送信中 */
   .progress-wrap { margin: 20px 0; }
   .progress-bar {
@@ -410,6 +434,8 @@
           <button class="copy-btn" id="copyAddrBtn">コピー</button>
         </div>
         <p class="alt-note" id="altNote"></p>
+        <div class="save-list" id="altSaveList"></div>
+        <p class="saved-note" id="altSavedNote"></p>
         <button class="btn alt-main" id="altMainBtn"></button>
         <button class="btn subtle" id="altMailBtn" style="display:none">メールアプリを開く（宛先入力済み）</button>
       </div>
@@ -422,6 +448,22 @@
       <div class="progress-wrap">
         <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
         <p class="progress-text" id="progressText">準備中…</p>
+      </div>
+
+      <!-- 送信がしばらく進まないときだけ表示（送信はそのまま続ける） -->
+      <div class="stall-box" id="stallBox">
+        <h3>送信に時間がかかっています</h3>
+        <p>送信はこのまま続けています。しばらく待っても進まない場合は、録音をスマホに保存して、メールで先生に送ってください。</p>
+        <div class="addr-row">
+          <div>
+            <span class="addr-label">提出先アドレス</span>
+            <span class="addr" id="stallAddr"></span>
+          </div>
+          <button class="copy-btn" id="copyAddrBtn3">コピー</button>
+        </div>
+        <div class="save-list" id="stallSaveList"></div>
+        <p class="saved-note" id="stallSavedNote"></p>
+        <p class="stall-foot">※「録音を送信しました」の画面に切り替わった場合は、送信できています。メールで送る必要はありません。</p>
       </div>
     </section>
 
@@ -855,6 +897,7 @@ async function startUpload() {
   state.sending = true;
   hideError();
   showPanel(4);
+  startStallWatch();   // 送信がしばらく進まなければ、スマホへの保存を案内する
 
   try {
     const nParts = state.blobs.length;
@@ -933,11 +976,13 @@ async function startUpload() {
 
     // 成功: バックアップを削除して完了画面へ
     await idbDeleteSafe();   // 端末内バックアップを消す（応答がなくても3秒で先へ進む）
+    stopStallWatch();
     state.sending = false;
     state.blobs = [];
     showPanel(5);
 
   } catch (err) {
+    stopStallWatch();
     state.sending = false;
     showPanel(3);
     showAltSubmit();
@@ -950,6 +995,33 @@ async function startUpload() {
 function setProgress(done, total, text) {
   $('progressFill').style.width = Math.round((done / total) * 100) + '%';
   $('progressText').textContent = text;
+  lastProgressAt = Date.now();   // 進んだので「進まない」見張りのカウントをやり直す
+}
+
+/* ---------- 送信が進まないときの見張り ---------- */
+// この時間（ミリ秒）送信が進まなければ、「スマホに保存してメールで送る」案内を出す。
+// 送信は止めずに続ける（あとで成功すれば、そのまま完了画面に進む）。
+const STALL_MS = 20000;
+let lastProgressAt = 0;
+let stallTimer = null;
+
+function startStallWatch() {
+  stopStallWatch();
+  lastProgressAt = Date.now();
+  stallTimer = setInterval(() => {
+    if (Date.now() - lastProgressAt >= STALL_MS) showStallBox();
+  }, 1000);
+}
+
+function stopStallWatch() {
+  if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+  $('stallBox').classList.remove('show');
+}
+
+function showStallBox() {
+  if ($('stallBox').classList.contains('show')) return;   // 一度出したら出したまま
+  renderSaveButtons($('stallSaveList'), $('stallSavedNote'));
+  $('stallBox').classList.add('show');
 }
 
 /* GAS への POST（1リクエストにつき最大3回リトライ） */
@@ -1020,19 +1092,51 @@ function blobToBase64(blob) {
   });
 }
 
-/* 端末にダウンロード（最終手段のフォールバック） */
-async function downloadBlob() {
-  const ext = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg' }[state.mimeType.split(';')[0]] || 'audio';
-  for (let i = 0; i < state.blobs.length; i++) {
-    const part = state.blobs.length > 1 ? '_' + partLabel(i) : '';
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(state.blobs[i]);
-    a.download = `${state.meta.studentId}_${state.meta.name}${part}_録音.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    if (i < state.blobs.length - 1) await sleep(600); // 連続保存の取りこぼし防止
+/* ---------- 録音をスマホ（端末）に保存 ---------- */
+
+/** 1つのファイルを端末に保存する（ブラウザのダウンロード機能を使う） */
+function saveFileToDevice(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60000);
+}
+
+/**
+ * 録音1つにつき1つの「スマホに保存」ボタンを作る。
+ * まとめて保存すると、iPhoneなどで2つ目以降の保存が止められることがあるため、1つずつ押してもらう。
+ */
+function renderSaveButtons(container, noteEl) {
+  container.innerHTML = '';
+  noteEl.textContent = '';
+  const files = buildShareFiles();
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    const hint = document.createElement('p');
+    hint.className = 'save-hint';
+    hint.textContent = '「ダウンロードしますか？」と表示されたら「ダウンロード」を押してください。';
+    container.appendChild(hint);
   }
+  files.forEach((file, i) => {
+    const label = files.length > 1 ? `${partLabel(i)} の録音をスマホに保存` : '録音をスマホに保存する';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'save-btn';
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      saveFileToDevice(file);
+      b.textContent = '✓ ' + label + '（保存済み）';
+      b.classList.add('saved');
+      noteEl.textContent = savedLocationText() +
+        (files.length > 1 ? `録音は${files.length}つあるので、すべて保存してください。` : '') +
+        '保存した録音をメールに添付し、上の提出先アドレスに送ってください。';
+      $('altMailBtn').style.display = 'block';
+    });
+    container.appendChild(b);
+  });
 }
 
 /* ---------- 完了後 ---------- */
@@ -1266,6 +1370,7 @@ function mailBodyText() {
 function setupAltSubmit() {
   $('altAddr').textContent = CONFIG.FALLBACK_EMAIL;
   $('unsAddr').textContent = CONFIG.FALLBACK_EMAIL;
+  $('stallAddr').textContent = CONFIG.FALLBACK_EMAIL;
 
   // 提出先アドレスのコピー
   const copyHandler = async (ev) => {
@@ -1288,6 +1393,7 @@ function setupAltSubmit() {
   };
   $('copyAddrBtn').addEventListener('click', copyHandler);
   $('copyAddrBtn2').addEventListener('click', copyHandler);
+  $('copyAddrBtn3').addEventListener('click', copyHandler);
 
   // メールアプリを開く（宛先・件名・本文は入力済み。添付は手動）
   $('altMailBtn').addEventListener('click', () => {
@@ -1297,23 +1403,16 @@ function setupAltSubmit() {
       '&body=' + encodeURIComponent(mailBodyText());
   });
 
-  // メインボタン: 共有に対応していれば共有、していなければ端末に保存
+  // 「メールで送る」: 録音を添付した状態でメールアプリを開く（共有に対応した端末だけ表示）
   $('altMainBtn').addEventListener('click', async () => {
-    if (canShareFiles()) {
-      try {
-        await navigator.share({
-          files: buildShareFiles(),
-          title: '録音の提出',
-          text: mailBodyText()
-        });
-      } catch (e) {
-        // ユーザーが共有をキャンセルした場合など。何もしない
-      }
-    } else {
-      await downloadBlob();
-      $('altNote').textContent = savedLocationText() +
-        'この録音をメールに添付し、上の提出先アドレスに送ってください。下の「メールアプリを開く」を押すと、宛先・件名・本文が入力された状態で開きます。';
-      $('altMailBtn').style.display = 'block';
+    try {
+      await navigator.share({
+        files: buildShareFiles(),
+        title: '録音の提出',
+        text: mailBodyText()
+      });
+    } catch (e) {
+      // ユーザーが共有をキャンセルした場合など。何もしない
     }
   });
 }
@@ -1324,13 +1423,13 @@ function showAltSubmit() {
   const shareable = canShareFiles();
   const files = n > 1 ? `録音${n}件` : '録音';
   $('altLead').textContent = `録音データはこの端末に残っています。次の手順で、${files}をメールで先生に提出してください。`;
-  $('altMainBtn').textContent = shareable
-    ? `${files}をメールで送る`
-    : `${files}を端末に保存する`;
+  $('altMainBtn').textContent = `${files}をメールで送る`;
+  $('altMainBtn').style.display = shareable ? 'block' : 'none';
   $('altNote').textContent = shareable
-    ? `① まず、上の「コピー」を押して提出先アドレスをコピーしてください。② 次に、下の「${files}をメールで送る」を押してメールアプリを選ぶと、${files}が添付された状態で開きます。③ 宛先にコピーしたアドレスを貼り付けて送信してください。`
-    : `① まず、上の「コピー」を押して提出先アドレスをコピーしてください。② 次に、下のボタンで${files}を端末に保存してください。③ 保存した${files}をメールに添付し、コピーしたアドレスに送ってください。`;
+    ? `① まず、上の「コピー」を押して提出先アドレスをコピーしてください。② 次に、いちばん下の「${files}をメールで送る」を押してメールアプリを選ぶと、${files}が添付された状態で開きます。③ 宛先にコピーしたアドレスを貼り付けて送信してください。メールアプリでうまく送れないときは、「スマホに保存」で録音を保存して、別の方法で送ってください。`
+    : `① まず、上の「コピー」を押して提出先アドレスをコピーしてください。② 次に、下のボタンで${files}をスマホに保存してください。③ 保存した${files}をメールに添付し、コピーしたアドレスに送ってください。`;
   $('altMailBtn').style.display = 'none';
+  renderSaveButtons($('altSaveList'), $('altSavedNote'));
   $('altBox').classList.add('show');
 }
 
