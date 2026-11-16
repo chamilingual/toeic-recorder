@@ -17,6 +17,7 @@
     --red-dark: #b32c2c;
     --green: #1f8a4c;
     --amber: #b47607;
+    --orange: #e8830c;
     --radius: 16px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -129,16 +130,21 @@
     background: #fff; transition: border-radius 0.2s, width 0.2s, height 0.2s;
   }
   .rec-btn.recording .icon { border-radius: 6px; width: 30px; height: 30px; }
-  .rec-btn.recording { animation: pulse 1.6s ease-out infinite; }
+  /* ボタンの色: 録音前=赤 / 録音中=緑 / 録音の合間（次の録音を待っている間）=オレンジ */
+  .rec-btn.recording { background: var(--green); animation: pulse 1.6s ease-out infinite; }
+  .rec-btn.recording:active { background: #176b3a; }
+  .rec-btn.waiting { background: var(--orange); }
+  .rec-btn.waiting:active { background: #c26c06; }
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(214,59,59,0.45); }
-    100% { box-shadow: 0 0 0 26px rgba(214,59,59,0); }
+    0%   { box-shadow: 0 0 0 0 rgba(31,138,76,0.45); }
+    100% { box-shadow: 0 0 0 26px rgba(31,138,76,0); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .rec-btn.recording { animation: none; box-shadow: 0 0 0 8px rgba(214,59,59,0.25); }
+    .rec-btn.recording { animation: none; box-shadow: 0 0 0 8px rgba(31,138,76,0.25); }
   }
   .rec-label { font-size: 0.95rem; font-weight: 700; margin-bottom: 16px; }
-  .rec-label.recording { color: var(--red); }
+  .rec-label.recording { color: var(--green); }
+  .rec-label.waiting { color: #b05f00; }
 
   /* 複数設問の録音 */
   .part-indicator {
@@ -703,6 +709,11 @@ function updateRecUI() {
   }
   $('timer').textContent = '0:00';
   $('timer').classList.remove('warn');
+  // 録音の合間（録音を1つ以上終えて、次の録音を待っている状態）はオレンジにする
+  const waiting = state.reRecordIndex === null && state.currentPart > 0;
+  $('recBtn').classList.toggle('waiting', waiting);
+  $('recLabel').classList.toggle('waiting', waiting);
+  $('recBtn').setAttribute('aria-label', '録音を開始');
 }
 
 /* ---------- ステップ2: 録音 ---------- */
@@ -770,6 +781,8 @@ async function startRecording() {
   updateTimer();
   recTimerId = setInterval(updateTimer, 250);
 
+  $('recBtn').classList.remove('waiting');
+  $('recLabel').classList.remove('waiting');
   $('recBtn').classList.add('recording');
   $('recBtn').setAttribute('aria-label', '録音を停止');
   $('recLabel').textContent = '録音中… もう一度タップで停止';
