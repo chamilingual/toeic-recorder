@@ -1061,7 +1061,11 @@ async function startUpload() {
       // 仕上げ（結合・保存・記録。控えメールは最後のファイルの時にまとめて1通）
       setProgress(ackedTotal(), totalAll, nParts > 1 ? `ファイル ${p + 1}/${nParts} を保存しています…` : '保存しています…');
       let result = null;
-      for (let attempt = 0; attempt < 6; attempt++) {
+      // 「処理中」「混雑」のときに待つ最長時間。GASは、公開直後やしばらく使われていなかった後の
+      // 1回目だけ、保存に数十秒かかることがある。その間に送り直した分は「処理中」と返るので、
+      // 1回目の処理が終わるまで待って確認し直す（ここで諦めると、記録されているのに失敗と表示される）
+      const finalizeDeadline = Date.now() + 180000;
+      for (let attempt = 0; attempt < 60; attempt++) {
         result = await postWithRetry({
           action: 'finalize',
           uploadId: pid,
@@ -1077,9 +1081,12 @@ async function startUpload() {
           awayCount: awayCount
         }, true);
         if (result.ok) break;
-        if (result.error === 'busy') {
-          // 授業中などで送信先が混み合っている。少し時間をずらして再試行する
-          setProgress(ackedTotal(), totalAll, '混み合っています。そのままお待ちください…');
+        if ((result.error === 'in_progress' || result.error === 'busy') && Date.now() < finalizeDeadline) {
+          // in_progress: この録音の保存処理がまだ動いている / busy: 授業中などで順番待ち
+          // 文字だけ変える（setProgress を使うと「進んだ」扱いになり、20秒後の保存の案内が出なくなるため）
+          $('progressText').textContent = result.error === 'in_progress'
+            ? '保存しています。少し時間がかかっています。そのままお待ちください…'
+            : '混み合っています。そのままお待ちください…';
           await sleep(3000 + Math.random() * 3000);
           continue;
         }
@@ -1206,6 +1213,7 @@ function serverErrorText(code) {
   const c = String(code || '');
   if (c.indexOf('認証エラー') === 0) return '合言葉（TOKEN）が GAS の Code.gs と一致していません。';
   if (c === 'busy') return '送信先が混み合っています。少し待ってから、もう一度提出してください。';
+  if (c === 'in_progress') return '保存に時間がかかっています。記録されている可能性があるので、まず控えメールが届いているか確認してください。届いていなければ、もう一度提出してください（二重には記録されません）。';
   if (c === 'missing_chunks') return '音声データの一部が届きませんでした。';
   return c || 'サーバーエラー';
 }
