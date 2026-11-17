@@ -85,6 +85,8 @@
   #email::placeholder, #studentId::placeholder, #name::placeholder {
     color: #c3cbd4; opacity: 1;   /* opacity: 1 は Firefox が勝手に薄くするのを防ぐため */
   }
+  .field-hint { font-size: 0.75rem; color: var(--ink-soft); margin: -2px 0 6px; }
+  .field-hint:empty { display: none; }
   .field .err { display: none; font-size: 0.75rem; color: var(--red); margin-top: 4px; }
   .field.invalid input, .field.invalid select { border-color: var(--red); }
   .field.invalid .err { display: block; }
@@ -354,14 +356,15 @@
       <p class="lead">すべての項目を入力してください。</p>
       <div class="field" id="fEmail">
         <label for="email">学校のメールアドレス</label>
+        <p class="field-hint" id="emailHint"></p>
         <input type="email" id="email" inputmode="email" autocomplete="email"
                autocapitalize="off" placeholder="例: 20250000@kanda.kifl.ac.jp">
-        <p class="err">メールアドレスの形式が正しくありません。</p>
+        <p class="err" id="emailErr">メールアドレスの形式が正しくありません。</p>
       </div>
       <div class="field" id="fStudentId">
         <label for="studentId">学籍番号</label>
         <input type="text" id="studentId" autocapitalize="characters" placeholder="例: 20250000">
-        <p class="err">学籍番号を入力してください。</p>
+        <p class="err" id="studentIdErr">学籍番号を入力してください。</p>
       </div>
       <div class="field" id="fName">
         <label for="name">名前</label>
@@ -520,19 +523,22 @@ const CONFIG = {
   //   label:      画面に表示される名前
   //   parts:      録音するファイルの数(応答問題のように複数設問がある場合は 2 以上)
   //   partLabels: 各録音の名前(parts が 2 以上のときに指定。ファイル名・メールにも使われる)
+  //   seconds:     録音できる秒数（本番の解答時間）。時間になると自動で止まる
+  //   partSeconds: 録音が複数ある問題で、録音ごとに秒数が違う場合に、順番に指定する
+  //   （seconds も partSeconds も無い問題は、下の MAX_SECONDS が上限になる）
   QUESTION_OPTIONS: [
-    { label: 'Q1-2 音読問題', parts: 1 },
-    { label: 'Q3 写真描写問題', parts: 1 },
-    { label: 'Q5-7 応答問題', parts: 3, partLabels: ['Q5', 'Q6', 'Q7'] },
-    { label: 'Q8-10 表問題', parts: 3, partLabels: ['Q8', 'Q9', 'Q10'] },
-    { label: 'Q11 意見問題', parts: 1 },
+    { label: 'Q1-2 音読問題', parts: 1, seconds: 45 },
+    { label: 'Q3 写真描写問題', parts: 1, seconds: 30 },
+    { label: 'Q5-7 応答問題', parts: 3, partLabels: ['Q5', 'Q6', 'Q7'], partSeconds: [15, 15, 30] },
+    { label: 'Q8-10 表問題', parts: 3, partLabels: ['Q8', 'Q9', 'Q10'], partSeconds: [15, 15, 30] },
+    { label: 'Q11 意見問題', parts: 1, seconds: 60 },
     { label: 'その他', parts: 1, note: true }   // note: true → 内容を書く欄が出る
   ],
 
   // 送信がどうしても失敗する学生のための、代替提出先メールアドレス
   FALLBACK_EMAIL: 'kaida-m@kifl.ac.jp',
 
-  // 録音の上限秒数（超えると自動停止）
+  // 秒数を指定していない問題（「その他」など）の録音の上限秒数（超えると自動停止）
   MAX_SECONDS: 120,
 
   // 1チャンクあたりの base64 文字数（回線が弱い環境向けに小さめ）
@@ -575,7 +581,6 @@ window.addEventListener('DOMContentLoaded', () => {
     o.textContent = q.label + (q.parts > 1 ? `（録音${q.parts}回）` : '');
     sel.appendChild(o);
   });
-  $('timerNote').textContent = `最長 ${Math.floor(CONFIG.MAX_SECONDS / 60)}分${CONFIG.MAX_SECONDS % 60 ? CONFIG.MAX_SECONDS % 60 + '秒' : ''} まで録音できます`;
 
   // 「その他」など note:true の選択時だけ内容欄を出す
   sel.addEventListener('change', () => {
@@ -585,6 +590,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // 前回入力したメールアドレス・学籍番号・名前を自動入力（2回目以降用）
   applyProfile();
+
+  // 許可ドメインなどの設定：前回の設定ですぐ使えるようにし、最新の設定を取りに行く
+  loadCachedSettings();
+  applySettingsToForm();
+  fetchSettings();
 
   // 代替提出パネルの初期化
   setupAltSubmit();
@@ -668,29 +678,99 @@ function collectMeta() {
   const q = CONFIG.QUESTION_OPTIONS[Number($('question').value)];
   let label = q.label;
   if (q.note) {
-    const note = $('questionNote').value.trim();
+    const note = normalizeText($('questionNote').value);
     if (note) label += '（' + note + '）';
   }
   return {
-    email: $('email').value.trim(),
-    name: $('name').value.trim(),
-    studentId: $('studentId').value.trim(),
+    email: normalizeText($('email').value).toLowerCase(),
+    name: normalizeText($('name').value),
+    studentId: normalizeText($('studentId').value),
     question: label
   };
 }
 
+/** 全角英数字→半角、見えない文字の除去、前後の空白の除去 */
+function normalizeText(v) {
+  return String(v || '').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ').trim();
+}
+
+/* ---------- 先生が設定シートで決める設定（許可ドメイン・学籍番号の照合） ---------- */
+const SETTINGS_KEY = 'toeicRecorderSettings';
+let settings = { allowedDomains: [], idCheck: true };   // 取得できるまでの初期値
+
+function loadCachedSettings() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    if (v && Array.isArray(v.allowedDomains)) settings = v;
+  } catch (e) { /* 記憶が使えない環境では初期値のまま */ }
+}
+
+/** ページを開いたときに、最新の設定を GAS から取ってくる（失敗しても前回の設定で動く） */
+async function fetchSettings() {
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 10000) : null;
+  try {
+    const res = await fetch(CONFIG.GAS_URL + '?action=config', { signal: ctrl ? ctrl.signal : undefined });
+    const data = await res.json();
+    if (data && data.ok && data.settings && Array.isArray(data.settings.allowedDomains)) {
+      settings = data.settings;
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+    }
+  } catch (e) {
+    // 電波が弱いなどで取れなかった。前回の設定のまま使う（提出時は GAS 側でも確認する）
+  } finally {
+    if (timer) clearTimeout(timer);
+    applySettingsToForm();
+  }
+}
+
+function applySettingsToForm() {
+  const d = settings.allowedDomains;
+  $('emailHint').textContent = d.length ? `@${d.join(' または @')} のアドレスを入力してください` : '';
+}
+
 function validateForm() {
+  // 全角で入力されていても判定できるよう、半角に直して欄に書き戻す
+  $('email').value = normalizeText($('email').value).toLowerCase();
+  $('studentId').value = normalizeText($('studentId').value);
+  $('name').value = normalizeText($('name').value);
+  const email = $('email').value, studentId = $('studentId').value;
+
+  let emailMsg = '', idMsg = '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    emailMsg = 'メールアドレスの形式が正しくありません。';
+  } else if (settings.allowedDomains.length &&
+             settings.allowedDomains.indexOf(email.split('@').pop()) < 0) {
+    emailMsg = `学校のメールアドレス（@${settings.allowedDomains.join(' または @')}）で入力してください。`;
+  }
+  if (!studentId) idMsg = '学籍番号を入力してください。';
+
+  // 学籍番号の数字と、メールアドレスの@の前の数字が違ったら、どちらかを直してもらう
+  if (!emailMsg && !idMsg && settings.idCheck) {
+    const localDigits = email.split('@')[0].replace(/\D/g, '');
+    const idDigits = studentId.replace(/\D/g, '');
+    if (localDigits && localDigits !== idDigits) {
+      emailMsg = `メールアドレスの@の前の数字（${localDigits}）と学籍番号（${studentId}）が一致していません。正しい方に直してください。`;
+      idMsg = '学籍番号とメールアドレスの数字が一致していません。';
+    }
+  }
+
   let ok = true;
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('email').value.trim());
-  $('fEmail').classList.toggle('invalid', !emailOk); ok = ok && emailOk;
-  const nameOk = $('name').value.trim().length > 0;
+  $('emailErr').textContent = emailMsg;
+  $('fEmail').classList.toggle('invalid', !!emailMsg); ok = ok && !emailMsg;
+  $('studentIdErr').textContent = idMsg;
+  $('fStudentId').classList.toggle('invalid', !!idMsg); ok = ok && !idMsg;
+  const nameOk = $('name').value.length > 0;
   $('fName').classList.toggle('invalid', !nameOk); ok = ok && nameOk;
-  const idOk = $('studentId').value.trim().length > 0;
-  $('fStudentId').classList.toggle('invalid', !idOk); ok = ok && idOk;
   const qOk = $('question').value !== '';
   $('fQuestion').classList.toggle('invalid', !qOk); ok = ok && qOk;
+  if (!ok) {
+    const first = document.querySelector('#panel1 .field.invalid');
+    if (first) first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
   return ok;
 }
+
 
 $('backTo1').addEventListener('click', () => showPanel(1));
 
@@ -707,8 +787,10 @@ function updateRecUI() {
     ind.classList.remove('show');
     $('recLabel').textContent = 'タップして録音を始める';
   }
-  $('timer').textContent = '0:00';
+  const limit = limitSecOf(idx);
+  $('timer').textContent = '0:00 / ' + fmtSec(limit);
   $('timer').classList.remove('warn');
+  $('timerNote').textContent = `この録音は ${limit}秒 です。時間になると自動で止まります。`;
   // 録音の合間（録音を1つ以上終えて、次の録音を待っている状態）はオレンジにする
   const waiting = state.reRecordIndex === null && state.currentPart > 0;
   $('recBtn').classList.toggle('waiting', waiting);
@@ -736,12 +818,23 @@ function pickMimeType() {
   return '';
 }
 
+let recStarting = false;   // マイクの準備中（許可の確認を待っている間など）
+
 $('recBtn').addEventListener('click', async () => {
+  // 準備中・停止処理中のタップは無視する（二重に録音が始まったり、録音が空になったりするのを防ぐ）
+  if (recStarting || recStopping) return;
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     stopRecording();
     return;
   }
-  await startRecording();
+  recStarting = true;
+  $('recBtn').disabled = true;
+  try {
+    await startRecording();
+  } finally {
+    recStarting = false;
+    $('recBtn').disabled = false;
+  }
 });
 
 async function startRecording() {
@@ -778,8 +871,10 @@ async function startRecording() {
 
   mediaRecorder.start(1000); // 1秒ごとにデータを確定（途中クラッシュ対策）
   recStartTime = Date.now();
+  recLimitSec = limitSecOf(state.reRecordIndex !== null ? state.reRecordIndex : state.currentPart);
   updateTimer();
   recTimerId = setInterval(updateTimer, 250);
+  recAutoStopId = setTimeout(stopRecording, recLimitSec * 1000);   // 本番と同じ秒数で自動停止
 
   $('recBtn').classList.remove('waiting');
   $('recLabel').classList.remove('waiting');
@@ -790,19 +885,38 @@ async function startRecording() {
   $('backTo1').disabled = true;
 }
 
-function updateTimer() {
-  const sec = Math.floor((Date.now() - recStartTime) / 1000);
-  $('timer').textContent = Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
-  $('timer').classList.toggle('warn', CONFIG.MAX_SECONDS - sec <= 20);
-  if (sec >= CONFIG.MAX_SECONDS) stopRecording();
+/** 録音 i 番目の制限時間（秒） */
+function limitSecOf(i) {
+  const q = state.qOption || {};
+  if (Array.isArray(q.partSeconds) && q.partSeconds[i]) return q.partSeconds[i];
+  if (q.seconds) return q.seconds;
+  return CONFIG.MAX_SECONDS;
 }
+const fmtSec = (t) => Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2);
+let recLimitSec = 0;
+let recAutoStopId = null;
+
+function updateTimer() {
+  const sec = Math.min(Math.floor((Date.now() - recStartTime) / 1000), recLimitSec);
+  $('timer').textContent = fmtSec(sec) + ' / ' + fmtSec(recLimitSec);
+  // 残り時間が少なくなったら色を変える（30秒以下の問題は残り5秒、それより長い問題は残り10秒）
+  $('timer').classList.toggle('warn', recLimitSec - sec <= (recLimitSec <= 30 ? 5 : 10));
+  if (Date.now() - recStartTime >= recLimitSec * 1000) stopRecording();
+}
+
+let recStopping = false;   // 停止の処理中（この間のタップは受け付けない）
 
 function stopRecording() {
   if (recTimerId) { clearInterval(recTimerId); recTimerId = null; }
-  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  if (recAutoStopId) { clearTimeout(recAutoStopId); recAutoStopId = null; }
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    recStopping = true;
+    mediaRecorder.stop();
+  }
 }
 
 function onRecordingStopped() {
+  recStopping = false;
   if (recStream) {
     recStream.getTracks().forEach(t => t.stop()); // マイクを解放
     recStream = null;
@@ -885,7 +999,7 @@ function goConfirm() {
 
   const m = state.meta;
   $('summary').innerHTML = '';
-  [['名前', m.name], ['学籍番号', m.studentId], ['問題の種類', m.question], ['メール', m.email]]
+  [['メール', m.email], ['学籍番号', m.studentId], ['名前', m.name], ['問題の種類', m.question]]
     .forEach(([k, v]) => {
       const row = document.createElement('div');
       const dt = document.createElement('dt'); dt.textContent = k;
@@ -1264,8 +1378,8 @@ $('restoreYes').addEventListener('click', () => {
   state.blobs = s.blobs.slice();
   state.mimeType = s.mimeType;
   state.meta = s.meta;
-  state.qOption = s.qOption ||
-    CONFIG.QUESTION_OPTIONS.find(q => s.meta.question.indexOf(q.label) === 0) ||
+  state.qOption = CONFIG.QUESTION_OPTIONS.find(q => s.meta.question.indexOf(q.label) === 0) ||
+    s.qOption ||
     { label: s.meta.question, parts: s.blobs.length };
   state.currentPart = typeof s.currentPart === 'number' ? s.currentPart : 0;
   awayCount = typeof s.awayCount === 'number' ? s.awayCount : 0;   // 離脱回数も引き継ぐ
@@ -1498,7 +1612,8 @@ $('cheatOk').addEventListener('click', () => {
 
 /* ---------- 離脱ガード ---------- */
 window.addEventListener('beforeunload', (e) => {
-  if ((mediaRecorder && mediaRecorder.state === 'recording') || state.sending) {
+  const unsent = state.blobs.some(Boolean);   // 録音したが、まだ提出が終わっていない
+  if ((mediaRecorder && mediaRecorder.state === 'recording') || state.sending || unsent) {
     e.preventDefault();
     e.returnValue = '';
   }
